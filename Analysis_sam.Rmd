@@ -1,0 +1,43 @@
+---
+title: "Yield"
+author: "N.R Okereke"
+date: "2024-06-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Import data
+```{r}
+#import data
+sam_abrese <- read.csv("Collaborative-Learning-Group/Lect2.3.3ex1.csv")
+sam_abrese$trtmt <- as.factor(sam_abrese$trtmt)
+sam_abrese$block <- as.factor(sam_abrese$block)
+str(sam_abrese)
+```
+
+### Analysis of variance
+```{r}
+fit1 <- lm(data = sam_abrese, yield ~ trtmt + block)
+anova(fit1)
+```
+###Visualize means
+
+```{r}
+library(tidyverse)
+
+sam_abrese %>%
+  ggplot(aes(y = yield, x = trtmt)) +
+  geom_boxplot() +
+  xlab("Treatments") +
+  ylab("Yield")
+
+sam_abrese %>%
+  ggplot(aes(y = yield, x = block)) +
+  geom_boxplot() +
+  xlab("blocks") +
+  ylab("Yield")
+```
+
