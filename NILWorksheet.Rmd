@@ -1,0 +1,108 @@
+---
+title: "NIL Worksheet"
+output: html_notebook
+---
+
+# Load the following libraries:
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r}
+add <- function(a, b) {
+  return (a + b)
+}
+
+x <- 2
+y <- 3
+
+print(add(x, y))
+
+
+
+"word"
+3
+3.0
+
+```
+
+
+# Run this cell for the functions
+```{r}
+# Create a dataframe split 50/50 by water treatment and 50/50 by NIL (25% of each combination)
+create_df <- function(num_plots) {
+  df <- data.frame(
+    treatment = rep(c("ww", "d"), each = num_plots/2),
+    nil = rep(c("NIL+", "NIL-"), each = num_plots/4, times=2),
+    height = round(rnorm(num_plots, mean=120, sd=10)), # randomly set heights with normal distribution
+    plot_id = c(1:num_plots)
+  )
+  return (df)
+}
+
+# Adjust heights based on predictions of different hypotheses
+# Environmental: only the water treatment matters
+# Genetic: only the presence of the allele matters
+# GxE: the gene is only expressed in the presence of drought
+
+# Random: Poor management leads to noise
+mutate_df <- function(num_plots, g_effect_size, e_effect_size) {
+  df <- create_df(num_plots)
+  df %>%
+    mutate(
+      e_effect = case_when(
+        treatment == "d" ~ height + e_effect_size,
+        treatment == "ww" ~ height
+      ),
+      g_effect = case_when(
+        nil == "NIL+" ~ height + g_effect_size,
+        nil == "NIL-" ~ height
+      ),
+      gxe_effect = case_when(
+        treatment == "d" & nil == "NIL+" ~ height + e_effect_size + g_effect_size,
+        treatment == "d" & nil == "NIL-" ~ height + e_effect_size,
+        treatment == "ww" ~ height
+      ),
+      random_effect  = case_when(
+        plot_id %% 5 == 0 ~ height + 10,
+        plot_id %% 5 != 0 ~ height
+      )
+  )
+}
+```
+
+```{r}
+df = create_df(10000)
+ggplot(df, aes(x=height, color=treatment)) + geom_histogram(binwidth=1, position="identity")
+```
+
+
+# Run this cell to generate the dataframe
+```{r}
+df = mutate_df(num_plots=10000, g_effect_size=10, e_effect_size=-30)
+ggplot(df, aes(x=gxe_effect, color=treatment)) + geom_histogram(binwidth=1, position="identity")
+
+#ggplot(df, aes(x=treatment, y=gxe_effect, group=nil)) + geom_line() +  stat_summary(geom = "line", fun = mean)
+
+
+```
+
+# Run this cell to visualize the results
+```{r}
+p1 <- ggplot(df, aes(x=treatment, y=g_effect, fill=nil)) + geom_boxplot() + labs(title="Genetic Effect Only", x="Treatment Group", y = "Plant Height (cm)")
+p2 <- ggplot(df, aes(x=treatment, y=e_effect, fill=nil)) + geom_boxplot() + labs(title="Environmental Effect Only", x="Treatment Group", y = "Plant Height (cm)")
+p3 <- ggplot(df, aes(x=treatment, y=gxe_effect, fill=nil)) + geom_boxplot() + labs(title="GxE Effect", x="Treatment Group", y = "Plant Height (cm)")
+p4 <- ggplot(df, aes(x=treatment, y=random_effect, fill=nil)) + geom_boxplot() + labs(title="Random Effects", x="Treatment Group", y = "Plant Height (cm)")
+
+(p1|p2)/(p3|p4) + plot_annotation(tag_levels = "a")
+
+#+ stat_compare_means(comparisons = p_comparisons, aes(label = ..p.format..))
+```
+
+```{r}
+
+df = create_df(200)
+df
+```
