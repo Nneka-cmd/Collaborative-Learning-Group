@@ -10,25 +10,6 @@ library(ggplot2)
 library(patchwork)
 ```
 
-```{r}
-add <- function(a, b) {
-  return (a + b)
-}
-
-x <- 2
-y <- 3
-
-print(add(x, y))
-
-
-
-"word"
-3
-3.0
-
-```
-
-
 # Run this cell for the functions
 ```{r}
 # Create a dataframe split 50/50 by water treatment and 50/50 by NIL (25% of each combination)
@@ -86,7 +67,6 @@ ggplot(df, aes(x=gxe_effect, color=treatment)) + geom_histogram(binwidth=1, posi
 
 #ggplot(df, aes(x=treatment, y=gxe_effect, group=nil)) + geom_line() +  stat_summary(geom = "line", fun = mean)
 
-
 ```
 
 # Run this cell to visualize the results
@@ -99,10 +79,4 @@ p4 <- ggplot(df, aes(x=treatment, y=random_effect, fill=nil)) + geom_boxplot() +
 (p1|p2)/(p3|p4) + plot_annotation(tag_levels = "a")
 
 #+ stat_compare_means(comparisons = p_comparisons, aes(label = ..p.format..))
-```
-
-```{r}
-
-df = create_df(200)
-df
 ```
