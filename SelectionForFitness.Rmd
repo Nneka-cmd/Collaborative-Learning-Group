@@ -151,7 +151,12 @@ Variables to play around with:
 - Heritability
 - Starting genetic variance
 ```{r}
-pop_vec <- seq(100,2100, by=400)
+
+fitnessFunc <- function(x) {
+  return (-(x)^2) + rnorm(1,sd=2)
+}
+
+pop_vec <- c(50,100,150,200,250,300,500,700,800,1000,1200,1400,1600,1800,2000)
 sel_int_vec <- seq(0.1,0.9, by=0.2)
 H2 <- 0.5
 nSims <- 3
@@ -192,7 +197,7 @@ for (p in 1:length(pop_vec)) {
       for(gen in 1:nGens) {
         df$traitVal[gen] <- meanG(pop)
         # Adjust this to use the fitness function instead of phenotype
-        pop <- selectCross(pop=pop, use='pheno', nInd=popSize*selInt, nCrosses = popSize)
+        pop <- selectCross(pop=pop, use=fitnessFunc, nInd=popSize*selInt, nCrosses = popSize)
       }
       gain[sim] <- meanG(pop) - startGV
     }
@@ -261,6 +266,7 @@ ggplot(data=df, aes(x=gen, y=traitVal)) +
 ```
 
 
+
 [Work in progress]
 Out of alleles left in the population, how many of them would increase fitness?
 Also: how does this change with size of allele? Look at editGenomeTopQtl()
@@ -269,19 +275,14 @@ Also: how does size of 'fitness delta' change over generations?
 # run for multiple individuals, and pull out individuals and cross them
 # inspect genetic architecture
 # show that P(allelic substitution is favorable)
+
+Create Population
 ```{r}
-
-
-hetLocus <- function(locus) {
-  return (length(unique(locus)) > 1)
-}
-
 initVal = 10
-popSize = 1000
+popSize = 200
 nChr = 10
-nSegSites = 100
+nSegSites = 50
 nLoci = nSegSites * nChr
-nGens = 20
 
 founders = runMacs(
    nInd=popSize,
@@ -290,19 +291,52 @@ founders = runMacs(
 )
 SP <- SimParam$new(founders)
 SP$addTraitA(
-  10,
-  mean=initVal,
-  var=abs(initVal/2)
+  mean=20,
+  var=5,
+  nQtlPerChr = 10 # changing this changes effect size? (first one is 10, then 20)
 )
 
 SP$setVarE(H2=0.5)
-pop <- newPop(founders, simParam = SP)
+foundingPop <- newPop(founders, simParam = SP)
+```
+
+```{r}
+traitArchitecture <- function(pop, fitFunc) {
+  initialFitness <- fitFunc(meanG(pop))
+  geno <- pullSegSiteGeno(pop)
+  cols <- colnames(geno)
+  popSize <- nrow(geno)
+  for (l in 1:length(cols)) {
+    strs = unlist(strsplit(cols[l], "_"))
+    chr = strtoi(strs[1])
+    site = strtoi(strs[2])
+    locus = geno[,l]
+    pop1 <- editGenome(pop, ind=c(1:popSize), chr=chr, segSites=site, allele=1, simParam=SP)
+    pop2 <- editGenome(pop, ind=c(1:popSize), chr=chr, segSites=site, allele=1, simParam=SP)
+  }
+  
+  
+}
+```
+
+
+```{r}
+
+
+hetLocus <- function(locus) {
+  return (length(unique(locus)) > 1)
+}
+
+
+nGens = 100
+pop <- foundingPop
 
 cols = colnames(pullSegSiteGeno(pop))
 df <- data.frame(gen=rep(1:nGens),
                  fitness=numeric(nGens),
                  traitVal=numeric(nGens),
-                 percFitInc=numeric(nGens))
+                 percFitInc=numeric(nGens),
+                 segAlleles=numeric(nGens))
 
 for (gen in 1:nGens) {
   print(gen)
@@ -316,29 +350,42 @@ for (gen in 1:nGens) {
     chr = strtoi(strs[1])
     site = strtoi(strs[2])
     locus = geno[,l]
+    inc <- FALSE
     if (hetLocus(locus)) {
       num_het_loci <- num_het_loci + 1
-      inc <- FALSE
-      if (FALSE) {
-        for (i in 1:nInd(pop)) {
-          ind = geno[i,]
-          fit_pre <- fitnessFunc(pop@gv[i])
-          pop0 <- editGenome(pop, ind=i, chr=chr, segSites=site, allele=0, simParam=SP)
-          pop1 <- editGenome(pop, ind=i, chr=chr, segSites=site, allele=1, simParam=SP)
-          
-          fit_post0 <- fitnessFunc(pop0@gv[i])
-          fit_post1 <- fitnessFunc(pop1@gv[i])
-          if ((fit_post0 > fit_pre) || (fit_post1 > fit_pre) ) {
-            inc <- TRUE
-            break
-          }
-        }
-        if (inc) {
-          num_inc <- num_inc + 1
-        }
+      fit_pre <- fitnessFunc(meanG(pop))
+      pop0 <- editGenome(pop, ind=c(1:popSize), chr=chr, segSites=site, allele=0, simParam=SP)
+      pop1 <- editGenome(pop, ind=c(1:popSize), chr=chr, segSites=site, allele=1, simParam=SP)
+      fit_post0 <- fitnessFunc(meanG(pop0))
+      fit_post1 <- fitnessFunc(meanG(pop1))
+      if ((fit_post0 > fit_pre) || (fit_post1 > fit_pre) ) {
+        inc <- TRUE
       }
-      
     }
+    if (inc == TRUE) {
+      num_inc <- num_inc + 1
+    }
+    if (FALSE) {
+      for (i in 1:nInd(pop)) {
+        ind = geno[i,]
+        fit_pre <- fitnessFunc(pop@gv[i])
+        pop0 <- editGenome(pop, ind=i, chr=chr, segSites=site, allele=0, simParam=SP)
+        pop1 <- editGenome(pop, ind=i, chr=chr, segSites=site, allele=1, simParam=SP)
+        
+        fit_post0 <- fitnessFunc(pop0@gv[i])
+        fit_post1 <- fitnessFunc(pop1@gv[i])
+        if ((fit_post0 > fit_pre)) {#} || (fit_post1 > fit_pre) ) {
+          inc <- TRUE
+          break
+        }
+        if ((fit_post1 > fit_pre)) {#} || (fit_post1 > fit_pre) ) {
+          inc <- TRUE
+          break
+        }
+        
+      }
+    }
+    
   }
   
   if (num_het_loci == 0) {
@@ -346,15 +393,15 @@ for (gen in 1:nGens) {
   } else {
     perc <- (num_inc / num_het_loci)
   }
-  df$percFitInc[gen] <- num_het_loci
-  pop <- selectCross(pop=pop, trait=fitnessFunc, nInd=popSize/2, nCrosses=popSize)
+  df$segAlleles[gen] <- num_het_loci
+  df$percFitInc[gen] <- perc
+  pop <- selectCross(pop=pop, trait=fitnessFunc, nInd=popSize*0.8, nCrosses=popSize)
 }
-
 par(mar = c(5, 5, 3, 5) + 0.3)
-plot(df$gen, df$traitVal, type="l", lwd = "3", col=2, xlab = "Generation", ylab = "Trait Value")
+plot(df$gen, df$fitness, type="l", lwd = "3", col=2, xlab = "Generation", ylab = "Fitness")
 par(new = TRUE) 
 plot(df$gen, df$percFitInc, type="l", lwd = "3", col = 3, axes = FALSE, xlab = "", ylab = "") 
-axis(side = 4, at = pretty(range(df$fitness)))
+axis(side = 4, at = pretty(range(df$percFitInc)))
 mtext("% of Segregating alleles that are Beneficial", side = 4, line = 3)
 par(xpd=TRUE)
 legend("right",
@@ -363,8 +410,14 @@ legend("right",
        lwd = 3,
        col = 2:3)
 
-ggplot(data=df, aes(x=gen, y=percFitInc)) +
+ggplot(data=df, aes(x=gen, y=segAlleles)) +
   geom_line() +
-  labs(x = "Generation", y = "% Segregating Alleles that are Beneficial")
+  labs(x = "Generation", y = "Num Segregating Alleles")
 
 ```
+```{r}
+popA
+meanG(popA)
+meanG(popB)
+```
+
