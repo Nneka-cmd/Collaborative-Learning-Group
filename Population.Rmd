@@ -1,0 +1,133 @@
+---
+title: "Work in Progress Stuff"
+output: html_notebook
+---
+
+```{r}
+library(AlphaSimR)
+library(ggplot2)
+library(data.table)
+library(plotly)
+
+rm(list = ls())
+par(mfrow = c(1, 1))
+```
+
+Plot a 3d surface of GEBV against 2 different input parameters
+
+Variables to play around with:
+- Selection intensity
+- Population size
+- Heritability
+- Starting genetic variance
+```{r}
+pop_vec <- c(50,100,150,200,250,300,500,700,900,1100,1400,1700,2000)
+sel_int_vec <- c(0.1,0.3,0.5,0.7,0.8,0.9,0.95)
+H2 <- 0.5
+nSims <- 3
+nGens <- 100
+nSegSites <- 1000
+nChromosomes <- 10
+nParents <- 1000
+nQtl <- nSegSites/nChromosomes
+gvar <- 10
+
+genMat <- matrix(NA, nrow=length(pop_vec),ncol=length(sel_int_vec))
+rownames(genMat) <- pop_vec
+colnames(genMat) <- sel_int_vec
+
+for (p in 1:length(pop_vec)) {
+  popSize = pop_vec[p]
+  print(paste0("Pop Size: ", popSize))
+  for (s in 1:length(sel_int_vec)) {
+    selInt <- 1-sel_int_vec[s]
+    gain <- vector(length=nSims)
+    for (sim in c(1:nSims)) {
+      founders = quickHaplo(
+        nInd=popSize,
+        nChr=nChromosomes,
+        segSites=nSegSites
+      )
+      SP <- SimParam$new(founders)
+    
+      SP$addTraitA(
+        mean = 0,
+        var = gvar,
+        nQtlPerChr = nQtl
+      )
+      SP$setVarE(H2=H2)
+      pop <- newPop(founders, simParam=SP)
+      
+      startGV <- meanG(pop)
+      for(gen in 1:nGens) {
+        df$traitVal[gen] <- meanG(pop)
+        # Adjust this to use the fitness function instead of phenotype
+        pop <- selectCross(pop=pop, use='pheno', nInd=popSize*(selInt), nCrosses = popSize)
+      }
+      gain[sim] <- meanG(pop) - startGV
+    }
+    genMat[p, s] <- median(gain)
+  }
+}
+
+# Use this to plot a 3d surface
+# The input matrix z should have y rows and x columns
+fig <- plot_ly(x=sel_int_vec, y=pop_vec, z = genMat, type='surface') %>%
+  layout(scene = list(xaxis = list(title = "Selection Intensity"),
+                      yaxis = list(title = "Population Size"),
+                      zaxis = list(title = "Genetic Gain"),
+                      aspectmode='cube'))
+fig
+```
+
+Plot Genetic Gain as a Function of Population Size
+```{r}
+parent_vec <- c(100,8000)
+nGens <- 200
+nSegSites <- 200
+nChromosomes <- 10
+nQtl <- nSegSites/nChromosomes
+selectionIntensity <- 0.8
+gvar <- 5
+her = 0.5
+
+nCombs = length(parent_vec)
+df <- data.frame(gen=rep(1:nGens, times=nCombs),
+                 traitVal=numeric(nGens*nCombs),
+                 popSize=numeric(nGens*nCombs))
+
+for (p in 1:length(parent_vec)) {
+  nParents = parent_vec[p]
+  print(paste0("Parents: ", nParents))
+  
+  founders = quickHaplo(
+    nInd=nParents,
+    nChr=nChromosomes,
+    segSites=nSegSites
+  )
+  SP <- SimParam$new(founders)
+
+  SP$addTraitA(
+    mean = 0,
+    var = gvar,
+    nQtlPerChr = nQtl
+  )
+  SP$setVarE(H2=her)
+  pop <- newPop(founders, simParam=SP)
+  
+  startGV <- meanG(pop)
+  for(gen in 1:nGens) {
+    idx = (p-1)*nGens + gen
+    df$traitVal[idx] <- meanG(pop)
+    df$popSize[idx] <- nParents
+    pop <- selectCross(pop=pop, use='pheno', nInd=nParents*selectionIntensity, nCrosses = nParents)
+  }
+}
+
+df$popSize = as.character(df$popSize)
+ggplot(data=df, aes(x=gen, y=traitVal)) +
+  geom_line(aes(color = popSize)) +
+  labs(x = "Generation", y = "GEBV")
+```
+
+
