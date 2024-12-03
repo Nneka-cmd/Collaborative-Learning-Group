@@ -14,7 +14,6 @@ Ne_Pop2000 <- 2000; Ne_Pop500_lim <- 500; Ne_Pop500_lim <- 500;
 Ne_Par5_pheno <- 5; Ne_Pop50_pheno <- 50; Ne_Par20_pheno <- 20
 Ne_Pop200_pheno <- 200; Ne_Par100_pheno <- 100; Ne_Pop1000_pheno <- 1000;
 Ne_Par200_pheno <- 200; Ne_Pop2000_pheno <- 2000
-
 ################################################################
 ## Define parameters for trait genetic architecture ###########  
 ################################################################
