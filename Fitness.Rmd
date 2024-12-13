@@ -28,7 +28,7 @@ oneTraitFitFunc <- function(x) {
 }
 
 twoTraitFitFunc <- function(x) {
-  res = -(x[,1]^2) - x[,2]^2
+  res = -((x[,1])^2) - ((x[,2])^2)
   return (res)
 }
 
@@ -363,8 +363,8 @@ legend("right",
 
 Create 1 Trait Population
 ```{r}
-popSize = 200
-nSegSites = 50
+popSize = 10
+nSegSites = 10
 nLoci = nSegSites * nChr
 
 founders = runMacs(
@@ -374,14 +374,14 @@ founders = runMacs(
 )
 SP <- SimParam$new(founders)
 SP$addTraitA(
-  mean=20,
-  var=5,
-  nQtlPerChr = 10 # changing this changes effect size? 100 QTL
+  mean=10,
+  var=1,
+  nQtlPerChr = 5 # changing this changes effect size? 100 QTL
 )
 
-SP$setVarE(H2=0.5)
+SP$setVarE(h2=0.6)
 foundingPop <- newPop(founders, simParam = SP)
-plotTraitArchitecture(foundingPop, oneTraitFitFunc)
+#plotTraitArchitecture(foundingPop, oneTraitFitFunc)
 ```
 
 Create 2 Trait Population
@@ -398,15 +398,15 @@ founders = runMacs(
 )
 SP <- SimParam$new(founders)
 #SP$addTraitA(mean=c(runif(1,-10,10),runif(1,-10,10)), var=c(1,1), nQtlPerChr=20)
-SP$addTraitA(mean=c(10,10), var=c(1,1), nQtlPerChr=20)
+SP$addTraitA(mean=c(1,1), var=c(0.1,0.1), nQtlPerChr=10, gamma = TRUE, shape = 1)
 
-SP$setVarE(H2=c(0.5, 0.5))
+SP$setVarE(h2=c(0.6, 0.6))
 #SP$addSnpChip(nSnpPerChr=1)
 foundingPop <- newPop(founders, simParam = SP)
 #snps <- pullSnpGeno(newPop, simParam = SP)
 
 #plot3dPopulationFitness(foundingPop, calculateFitnessTwoTrait)
-#plotTraitArchitecture(pop=foundingPop, fitFunc=twoTraitFitFunc)
+#plotTraitArchitecture(pop=foundingPop, method="MethodB", fitFunc=twoTraitFitFunc)
 ```
 
 Out of alleles left in the population, how many of them would increase fitness?
@@ -415,7 +415,9 @@ Next: how does size of 'fitness delta' change over generations?
 ```{r}
 nGens = 50
 pop <- foundingPop
+popSize <- nInd(pop)
 selIntensity <- 0.2
+fitFunc <- twoTraitFitFunc
 
 cols = colnames(pullSegSiteGeno(pop))
 df <- data.frame(gen=rep(1:nGens),
@@ -426,30 +428,25 @@ df <- data.frame(gen=rep(1:nGens),
 
 for (gen in 1:nGens) {
   print(gen)
-  df$fitness[gen] <- fitnessFunc(meanG(pop))
+  df$fitness[gen] <- mean(fitFunc(gv(pop)))
   df$traitVal[gen] <- meanG(pop)
   num_het_loci = 0
   num_inc = 0
   geno <- pullSegSiteGeno(pop)
+  cols <- colnames(geno)
   for (l in 1:nLoci) {
+    id <- cols[l]
     strs = unlist(strsplit(cols[l], "_"))
     chr = strtoi(strs[1])
     site = strtoi(strs[2])
     locus = geno[,l]
-    inc <- FALSE
-    if (hetLocus(locus)) {
+    e <- getEffectSize(locus, id, fitFunc, pop, "MethodB")
+    #print(e)
+    if (!is.na(e)) {
       num_het_loci <- num_het_loci + 1
-      fit_pre <- fitnessFunc(meanG(pop))
-      pop0 <- editGenome(pop, ind=c(1:popSize), chr=chr, segSites=site, allele=0, simParam=SP)
-      pop1 <- editGenome(pop, ind=c(1:popSize), chr=chr, segSites=site, allele=1, simParam=SP)
-      fit_post0 <- fitnessFunc(meanG(pop0))
-      fit_post1 <- fitnessFunc(meanG(pop1))
-      if ((fit_post0 > fit_pre) || (fit_post1 > fit_pre) ) {
-        inc <- TRUE
+      if (e > 0) {
+        num_inc <- num_inc + 1
       }
-    }
-    if (inc == TRUE) {
-      num_inc <- num_inc + 1
     }
   }
   
@@ -460,7 +457,7 @@ for (gen in 1:nGens) {
   }
   df$segAlleles[gen] <- num_het_loci
   df$percFitInc[gen] <- perc
-  pop <- selectCross(pop=pop, trait=oneTraitFitFunc, nInd=popSize*(1-selIntensity), nCrosses=popSize)
+  pop <- selectCross(pop=pop, trait=fitFunc, nInd=nInd(pop)*(1-selIntensity), nCrosses=nInd(pop))
 }
 par(mar = c(5, 5, 3, 5) + 0.3)
 plot(df$gen, df$fitness, type="l", lwd = "3", col=2, xlab = "Generation", ylab = "Fitness")
@@ -565,7 +562,7 @@ founders = runMacs(
 SP <- SimParam$new(founders)
 SP$addTraitA(mean=c(runif(1,-10,10),runif(1,-10,10)), var=c(1,1), nQtlPerChr=10)
 
-SP$setVarE(H2=c(0.5,0.5))
+SP$setVarE(h2=c(0.7,0.7))
 foundingPop <- newPop(founders, simParam = SP)
 
 pop <- foundingPop
@@ -592,8 +589,7 @@ population w/standing genetic variation
 
 Figure out how to do QTL mapping
 ```{r}
-nBurnInGens <- 20
-trackFixedAlleles <- TRUE
+nBurnInGens <- 10
 
 fit_df <- data.frame(gen=1:nBurnInGens,
                    fitness=numeric(nBurnInGens),
@@ -607,7 +603,7 @@ for (gen in 1:nBurnInGens) {
   fit_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(pop)))
   fit_df$traitValA[gen] <- meanP(pop)[1]
   fit_df$traitValB[gen] <- meanP(pop)[2]
-  pop <- selectCross(pop, trait=twoTraitFitFunc, nInd=nInd(pop)*0.9, nCrosses=nInd(pop))
+  pop <- selectCross(pop, trait=twoTraitFitFunc, nInd=nInd(pop)*0.95, nCrosses=nInd(pop))
 }
 
 
@@ -627,14 +623,8 @@ fig <- add_trace(
   line = list(width = 5)
 )
 
-# Create 2 sub populations
-nSegGens <- 60
-popA_df <- data.frame(gen=1:nSegGens,
-                   fitness=numeric(nSegGens),
-                   traitValA=numeric(nSegGens),
-                   traitValB=numeric(nSegGens))
-
-popB_df <- data.frame(gen=1:nSegGens,
+nSegGens <- 50
+subPop_df <- data.frame(gen=1:nSegGens,
                    fitness=numeric(nSegGens),
                    traitValA=numeric(nSegGens),
                    traitValB=numeric(nSegGens))
@@ -648,95 +638,64 @@ eff_size_df <- data.frame(orderFixed=c(),
 for (s in 1:nSims) {
   print(s)
   # Figure out a better way to select randomly? or by traitA, traitB?
-  popA <- selectInd(pop, use="rand", nInd=popSize*0.2)
-  popB <- selectInd(pop, use="rand", nInd=popSize*0.2)
+  subPop <- selectInd(pop, use="rand", nInd=nInd(pop)*0.25)
   idx <- 1
   inc <- FALSE
   
   for (gen in 1:nSegGens) {
-    popA_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(popA)))
-    popA_df$traitValA[gen] <- meanP(popA)[1]
-    popA_df$traitValB[gen] <- meanP(popA)[2]
-    prevPop <- popA
-    popA <- selectCross(popA, trait=twoTraitFitFunc, nInd=nInd(popA)*0.8, nCrosses=nInd(popA))
-    if (trackFixedAlleles) {
-      prevGeno <- pullSegSiteGeno(prevPop)
-      newGeno <- pullSegSiteGeno(popA)
-      cols <- colnames(newGeno)
-      for (l in 1:nLoci) {
-        id <- cols[l]
-        strs = unlist(strsplit(id, "_"))
-        chr = strtoi(strs[1])
-        site = strtoi(strs[2])
-        prevLocus = prevGeno[,l]
-        newLocus = newGeno[,l]
-        if (hetLocus(prevLocus) && !hetLocus(newLocus)) {
-          effSize <- getEffectSize(prevLocus,
-                                    id,
-                                    twoTraitFitFunc,
-                                    prevPop,
-                                    "MethodA")
-          if (effSize > 0) {
-            inc <- TRUE
-            new_row <- data.frame(orderFixed=c(idx),
-                                  effectSize=c(effSize))
-            eff_size_df <- rbind(eff_size_df, new_row)
-          }
+    subPop_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(subPop)))
+    subPop_df$traitValA[gen] <- meanP(subPop)[1]
+    subPop_df$traitValB[gen] <- meanP(subPop)[2]
+    prevPop <- subPop
+    subPop <- selectCross(subPop, trait=twoTraitFitFunc, nInd=nInd(subPop)*0.9, nCrosses=nInd(subPop))
+    prevGeno <- pullSegSiteGeno(prevPop)
+    newGeno <- pullSegSiteGeno(subPop)
+    cols <- colnames(newGeno)
+    for (l in 1:nLoci) {
+      id <- cols[l]
+      strs = unlist(strsplit(id, "_"))
+      chr = strtoi(strs[1])
+      site = strtoi(strs[2])
+      prevLocus = prevGeno[,l]
+      newLocus = newGeno[,l]
+      if (hetLocus(prevLocus) && !hetLocus(newLocus)) {
+        effSize <- getEffectSize(prevLocus,
+                                  id,
+                                  twoTraitFitFunc,
+                                  prevPop,
+                                  "MethodA")
+        if (effSize > 0) {
+          inc <- TRUE
+          new_row <- data.frame(orderFixed=c(idx),
+                                effectSize=c(effSize))
+          eff_size_df <- rbind(eff_size_df, new_row)
         }
       }
-      if (inc) {
-        idx <- idx + 1
-        inc <- FALSE
-      }
-    } else {
-      
+    }
+    if (inc) {
+      idx <- idx + 1
+      inc <- FALSE
     }
     
-    if (!trackFixedAlleles) {
-      popB_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(popB)))
-      popB_df$traitValA[gen] <- meanP(popB)[1]
-      popB_df$traitValB[gen] <- meanP(popB)[2]
-      popB <- selectCross(popB, trait=twoTraitFitFunc, nInd=nInd(popB)*0.8, nCrosses=nInd(popB))
-    }
   }
   fig <- add_trace(
     fig,
-    popA_df,
-    name = "Pop A",
+    subPop_df,
+    name = s,
     x = popA_df$traitValA,
     y = popA_df$traitValB,
     z = popA_df$fitness,
     type = 'scatter3d',
     mode = 'lines',
     opacity = 1,
-    color = 'red',
-    line = list(width = 5)
+    color = s,
+    line = list(width = 2)
   )
 }
 
-
-if (!trackFixedAlleles) {
-  fig <- add_trace(
-    fig,
-    popB_df,
-    name = "Pop B",
-    x = popB_df$traitValA,
-    y = popB_df$traitValB,
-    z = popB_df$fitness,
-    type = 'scatter3d',
-    mode = 'lines',
-    opacity = 1,
-    color = 'blue',
-    line = list(width = 5)
-  )
-}
-
-
-if (trackFixedAlleles) {
-  grouped_df <- eff_size_df %>% group_by(orderFixed) %>% summarize(meanEffectSize = mean(effectSize))
-  ggplot(data=grouped_df, aes(x=orderFixed, y=meanEffectSize)) +
-    geom_bar(stat="identity")
-}
+grouped_df <- eff_size_df %>% group_by(orderFixed) %>% summarize(meanEffectSize = mean(effectSize))
+ggplot(data=grouped_df, aes(x=orderFixed, y=meanEffectSize)) +
+  geom_bar(stat="identity")
 
 
 p <- fig %>%
@@ -749,6 +708,108 @@ p <- fig %>%
 htmlwidgets::saveWidget(as_widget(p), "~/Downloads/20241209_100adaptivewalks.html")
 
 ```
+```{r}
+nBurnInGens <- 10
+trackFixedAlleles <- TRUE
+
+fit_df <- data.frame(gen=1:nBurnInGens,
+                   fitness=numeric(nBurnInGens),
+                   traitValA=numeric(nBurnInGens),
+                   traitValB=numeric(nBurnInGens))
+
+pop <- foundingPop
+
+# BURN-IN
+for (gen in 1:nBurnInGens) {
+  fit_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(pop)))
+  fit_df$traitValA[gen] <- meanP(pop)[1]
+  fit_df$traitValB[gen] <- meanP(pop)[2]
+  pop <- selectCross(pop, trait=twoTraitFitFunc, nInd=nInd(pop)*0.95, nCrosses=nInd(pop))
+}
+
+# Create 2 sub populations
+nSegGens <- 50
+popA_df <- data.frame(gen=1:nSegGens,
+                   fitness=numeric(nSegGens),
+                   traitValA=numeric(nSegGens),
+                   traitValB=numeric(nSegGens))
+
+popB_df <- data.frame(gen=1:nSegGens,
+                   fitness=numeric(nSegGens),
+                   traitValA=numeric(nSegGens),
+                   traitValB=numeric(nSegGens))
+
+# Figure out a better way to select randomly? or by traitA, traitB?
+popA <- selectInd(pop, use="rand", nInd=nInd(pop)*0.25)
+popB <- selectInd(pop, use="rand", nInd=nInd(pop)*0.25)
+
+for (gen in 1:nSegGens) {
+  popA_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(popA)))
+  popA_df$traitValA[gen] <- meanP(popA)[1]
+  popA_df$traitValB[gen] <- meanP(popA)[2]
+  popA <- selectCross(popA, trait=twoTraitFitFunc, nInd=nInd(popA)*0.8, nCrosses=nInd(popA))
+  
+  popB_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(popB)))
+  popB_df$traitValA[gen] <- meanP(popB)[1]
+  popB_df$traitValB[gen] <- meanP(popB)[2]
+  popB <- selectCross(popB, trait=twoTraitFitFunc, nInd=nInd(popB)*0.8, nCrosses=nInd(popB))
+}
+
+fig <- plot_ly()
+fig <- add_trace(
+  fig,
+  fit_df,
+  name = "Burn In",
+  x = fit_df$traitValA,
+  y = fit_df$traitValB,
+  z = fit_df$fitness,
+  type = 'scatter3d',
+  mode = 'lines',
+  opacity = 1,
+  color = 'yellow',
+  line = list(width = 5)
+)
+
+fig <- add_trace(
+    fig,
+    popA_df,
+    name = "Pop A",
+    x = popA_df$traitValA,
+    y = popA_df$traitValB,
+    z = popA_df$fitness,
+    type = 'scatter3d',
+    mode = 'lines',
+    opacity = 1,
+    color = 'red',
+    line = list(width = 5)
+  )
+
+fig <- add_trace(
+    fig,
+    popB_df,
+    name = "Pop B",
+    x = popB_df$traitValA,
+    y = popB_df$traitValB,
+    z = popB_df$fitness,
+    type = 'scatter3d',
+    mode = 'lines',
+    opacity = 1,
+    color = 'blue',
+    line = list(width = 5)
+  )
+
+
+p <- fig %>%
+  layout(legend=list(title=list(text='Population')),
+         showlegend=FALSE,
+         scene = list(xaxis = list(title = "Trait A"),
+                      yaxis = list(title = "Trait B"),
+                      zaxis = list(title = "w"),
+                      aspectmode='cube')) %>% hide_colorbar()
+htmlwidgets::saveWidget(as_widget(p), "~/Downloads/20241212_2adaptivewalks.html")
+p
+```
+
 
 
 Pull out individuals from each population and cross them
@@ -756,10 +817,11 @@ Create RILs
 Inspect genetic architecture + do QTL mapping
 Work in Progress
 ```{r}
-plotTraitArchitecture(popA, "MethodB", twoTraitFitFunc) | plotTraitArchitecture(popB, "MethodB",twoTraitFitFunc)
+plotTraitArchitecture(popA, "MethodB", twoTraitFitFunc) #| plotTraitArchitecture(popB, "MethodB",twoTraitFitFunc))
 
 mean(twoTraitFitFunc(pheno(popA)))
 mean(twoTraitFitFunc(pheno(popB)))
+
 
 indA <- popA[1]
 pheno(indA)
@@ -771,8 +833,6 @@ nRILGens <- 8
 for (r in 1:nRILGens) {
   # Create RIL
 }
-
-# Do QTL mapping
 
 ```
 Figure out QTL Mapping
