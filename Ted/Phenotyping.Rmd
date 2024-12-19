@@ -1,0 +1,229 @@
+---
+title: "Phenotypic Error"
+output: html_notebook
+---
+
+```{r}
+library(AlphaSimR)
+library(ggplot2)
+library(data.table)
+library(plotly)
+
+rm(list = ls())
+par(mfrow = c(1, 1))
+
+nSegSites <- 1000
+nChromosomes <- 10
+nParents <- 32
+nCrosses <- 1024
+nFamilies <- nCrosses/2
+nQtl <- nSegSites/nChromosomes
+
+#nGens <- 10
+
+nF2PerFamily <- 4
+nF2Selected <-2
+nF3PerFamily <- 4
+nF3Selected <- 2
+nF4PerFamily <- 4
+nF4Selected <- 2
+nF5PerFamily <- 4
+nPYTSelected <- 2
+
+nHDRWReps <- 1/4
+nPYT <- 256
+nPYTReps <- 1
+nAYT <- 64
+nAYTReps <- 4
+nEYT <- 16
+nEYTReps <- 8
+```
+
+```{r}
+#err_vec <- seq(0.1,40, by=5)
+h_vec <- seq(0.1, 0.9, by=0.1)
+nF2_vec <- seq(32,256, by=32)
+#mult_vec <- seq(1,10, by=1)
+nSims <- 3
+
+# use candidates to specify threshold of resistance
+# use trait = selIndex
+# increase selection intensity
+# Store response to selection (breeders equation)
+# Add heritability?
+
+genMat <- matrix(NA, nrow=length(nF2_vec),ncol=length(h_vec))
+rownames(genMat) <- nF2_vec
+colnames(genMat) <- h_vec
+
+for (f in 1:length(nF2_vec)) {
+  f2_sel = nF2_vec[f]
+  print(paste0("NumF2: ", f2_sel))
+  for (h in 1:length(h_vec)) {
+    her = h_vec[h]
+    gain <- vector(length=nSims)
+    for (sim in c(1:nSims)) {
+      founders = runMacs(
+        nInd=nParents,
+        nChr=nChromosomes,
+        segSites=nSegSites
+      )
+      SP <- SimParam$new(founders)
+    
+      SP$addTraitA(
+        mean = 10,
+        var = 5,
+        nQtlPerChr = nQtl
+      )
+      SP$setVarE(H2=her)
+      parents <- newPop(founders, simParam=SP)
+      # Create 1024 F1s
+      startGV <- meanG(parents)
+      F1 <- randCross(parents, nCrosses = nCrosses)
+      F1 <- setPheno(F1)
+      #print(length(gv(F1)))
+      
+      
+      # Select top half of families
+      # Create 4 * 512 F2s (2048 tot)
+      F2 <- selectInd(F1,
+                      nInd = nFamilies,
+                      use = "pheno",
+                      selectTop = TRUE)
+      
+      
+      F2 <- self(F2, nProgeny = nF2PerFamily)
+      F2 <- setPheno(F2)
+      
+      # Create 2 * 4 * 128 F3s (1024 tot)
+      F3 <- selectFam(F2,f2_sel)
+      F3 <- selectWithinFam(F3,
+                            nInd = nF2Selected,
+                            use = "pheno",
+                            selectTop = TRUE)
+      
+      F3 <- self(F3, nProgeny = nF3PerFamily)
+      F3 <- setPheno(F3)
+      
+      # Create 2 * 4 * 32 F4s (1024 tot)
+      F4 <- selectWithinFam(F3,
+                            nInd = nF3Selected,
+                            use = "pheno",
+                            selectTop = TRUE)
+      F4 <- self(F4, nProgeny = nF4PerFamily)
+      F4 <- setPheno(F4)
+  
+      # Create 2 * 4 * 1024 F5s (1024 tot)
+      F5 <- selectWithinFam(F4,
+                            nInd = nF4Selected,
+                            use = "pheno",
+                            selectTop = TRUE)
+      F5 <- self(F5, nProgeny = nF5PerFamily)
+      F5 <- setPheno(F5)
+      HDRW <- setPheno(F5, reps = nHDRWReps)
+
+      # Select 8 Individuals Per Family  (256 tot)
+      PYT <- selectWithinFam(HDRW,
+                             nInd = nPYTSelected,
+                             use = "pheno",
+                             selectTop = TRUE)
+
+      PYT <- setPheno(PYT, reps = nPYTReps)
+
+      # Bulk select 64 AYT Individuals
+      AYT = selectInd(PYT,
+                      nInd = nAYT,
+                      use = "pheno",
+                      selectTop = TRUE)
+      AYT = setPheno(AYT, reps = nAYTReps)
+      
+      # Select 16 EYT Individuals
+      EYT = selectInd(AYT,
+                      nInd = nEYT,
+                      use = "pheno",
+                      selectTop = TRUE)
+      EYT = setPheno(EYT, reps = nEYTReps)
+      varieties = selectInd(AYT, nInd=3, use='pheno', selectTop=TRUE)
+      #gv_p = gv(parents)
+      #gv_e = gv(EYT)
+      #gv_v = gv(varieties)
+      #idx = c(1:length(gv_p))
+      #df <- data.frame(gv_p, gv_e, gv_v, idx)
+      #colnames(df) = c("parents", "eyt", "varieties", "idx")
+      #df <- melt(as.data.table(df), id.vars='idx')
+      #ggplot(df, aes(x=value, color=variable)) + geom_histogram(binwidth=1, position='identity')
+      
+      gain[sim] <- meanG(varieties) - meanG(parents)
+    }
+    genMat[f, h] <- median(gain)
+  }
+}
+```
+
+```{r}
+
+genVals$error_var <- as.character(genVals$error_var) # change if using spectrum
+ggplot(genVals, aes(x=error_var, y=gebv, fill=error_var)) +
+  geom_boxplot() +
+  labs(x = "Error Variance", y = "Breeding Value") +
+  scale_fill_brewer(palette="Spectral")
+
+ggplot(genVals, aes(x=error_var, y=gvar, fill=error_var)) +
+  geom_boxplot() +
+  labs(x = "Error Variance", y = "Genetic Variance") +
+  scale_fill_brewer(palette="Spectral")
+
+
+genValsCopy <- genVals
+genValsAgg <- aggregate(genValsCopy$gebv, list(genValsCopy$seg_sites, genValsCopy$error_var), FUN=mean)
+colnames(genValsAgg) <- c('seg_sites', 'error_var', 'gebv')
+```
+
+
+```{r}
+
+fig <- plot_ly(x=h_vec, y=nF2_vec, z = genMat, type='surface') %>%
+  layout(scene = list(xaxis = list(title = "Heritability"),
+                      yaxis = list(title = "# F2 Families Selected"),
+                      zaxis = list(title = "Genetic Gain"),
+                      aspectmode='cube'))
+fig
+```
+
+```{r}
+meanGTrait = sapply(meanGAll[1:nGens], function(x) x[1])
+meanRange = range(meanGTrait)
+
+varGTrait = sapply(varGAll[1:nGens], function(x) x[1])
+varRange = range(varGTrait)
+
+
+
+
+sum <- data.frame(gen, meanGTrait, varGTrait)
+
+ggplot(sum, aes(gen)) +
+  geom_line(aes(y = varGTrait)) +
+  geom_line(aes(y = meanGTrait)) +
+  theme(legend.position = "top")
+# Plot mean of genetic values over time
+#plot(0, 0, xlim = c(0,nGens), ylim = meanRange, type = "n")
+#cl <- rainbow(5)
+#lines(x = 1:nGens, y = varGTrait, type = "l", lwd = 3)
+#lines(x = 1:nGens, y = meanGTrait, type = "l", lty = 2, lwd = 3)
+
+#legend(x = "topleft", legend = c("1", "2"), title = "Trait",
+#       lwd = 3, lty = c(1, 2), col = c("red", "blue"))
+
+# Plot variance of genetic values over time
+#plot(x = 1:nGens, y = varGTrait, type = "l", col = "black", lwd = 3,
+#     xlab = "Generation", ylab = "Variance of genetic values", ylim = varRange)
+
+#legend(x = "topleft", legend = c("1", "2"), title = "Trait",
+#       lwd = 3, lty = c(1, 2), col = c("black", "purple"))
+
+# Plot correlation between genetic values over time
+#plot(x = 1:15, y = corGAll[1:15], type = "l", col = "black", lwd = 3,
+#     xlab = "Generation", ylab = "Genetic correlation")
+```
+
