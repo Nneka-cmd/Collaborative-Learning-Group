@@ -7,9 +7,13 @@ Imports
 ```{r}
 library(AlphaSimR)
 library(ggplot2)
+library(patchwork)
 library(plotly)
 library(viridis)
 library(dplyr)
+library(qqman)
+library(rrBLUP)
+library(qtl)
 rm(list = ls())
 ```
 
@@ -38,6 +42,13 @@ calculateFitnessTwoTrait <- function(x,y) {
 
 hetLocus <- function(locus) {
   return (length(unique(locus)) > 1)
+}
+
+# Will return true if the two individuals have the same haplotype underlying the specified trait
+cisElite <- function(indA, indB, trait=1) {
+  qtlA <- pullQtlGeno(indA, trait=trait)
+  qtlB <- pullQtlGeno(indB, trait=trait)
+  return (isTRUE(all.equal(qtlA[1,], qtlB[1,])))
 }
 ```
 
@@ -189,7 +200,12 @@ getEffectSize <- function(locus,
 # Plots the trait architecture on a genetic basis
 # Works for 1 or 2 trait populations
 plotTraitArchitecture <- function(pop, methodType="MethodB", fitFunc) {
-  geno <- pullSegSiteGeno(pop)
+  geno <- pullQtlGeno(pop,1)
+  if (pop@nTraits > 1) {
+    for (t in 2:pop@nTraits) {
+      geno <- cbind(geno, pullQtlGeno(pop, trait=t))
+    }
+  }
   cols <- colnames(geno)
   nLoci <- length(cols)
   popSize <- nrow(geno)
@@ -208,6 +224,8 @@ plotTraitArchitecture <- function(pop, methodType="MethodB", fitFunc) {
   }
   eff_sizes <- eff_sizes[apply(eff_sizes!=0, 1, all),]
   eff_sizes <- na.omit(eff_sizes)
+  eff_sizes <- unique(eff_sizes)
+  e <- eff_sizes
   ggplot(data=eff_sizes, aes(x=reorder(id, -eff_size), y=eff_size)) +
     geom_bar(stat="identity") +
     labs(x = "Variant Id", y = "Effect Size") +
@@ -363,9 +381,9 @@ legend("right",
 
 Create 1 Trait Population
 ```{r}
-popSize = 10
-nSegSites = 10
-nLoci = nSegSites * nChr
+popSize = 1000
+nSegSites = 100
+#nLoci = nSegSites * nChr
 
 founders = runMacs(
    nInd=popSize,
@@ -389,7 +407,6 @@ Create 2 Trait Population
 set.seed(123)
 popSize = 1000
 nSegSites = 100
-nLoci = nSegSites * nChr
 
 founders = runMacs(
    nInd=popSize,
@@ -398,15 +415,17 @@ founders = runMacs(
 )
 SP <- SimParam$new(founders)
 #SP$addTraitA(mean=c(runif(1,-10,10),runif(1,-10,10)), var=c(1,1), nQtlPerChr=20)
-SP$addTraitA(mean=c(1,1), var=c(0.1,0.1), nQtlPerChr=10, gamma = TRUE, shape = 1)
+#SP$addTraitA(mean=c(1,1), var=c(0.1,0.1), nQtlPerChr=c(5,5), gamma = TRUE, shape = 1)
+
+SP$addTraitA(mean=1, var=0.2, nQtlPerChr=3, gamma = TRUE, shape = 1)
+SP$addTraitA(mean=1, var=0.2, nQtlPerChr=3, gamma = TRUE, shape = 1)
 
 SP$setVarE(h2=c(0.6, 0.6))
-#SP$addSnpChip(nSnpPerChr=1)
+SP$addSnpChip(nSnpPerChr=10)
 foundingPop <- newPop(founders, simParam = SP)
-#snps <- pullSnpGeno(newPop, simParam = SP)
 
 #plot3dPopulationFitness(foundingPop, calculateFitnessTwoTrait)
-#plotTraitArchitecture(pop=foundingPop, method="MethodB", fitFunc=twoTraitFitFunc)
+plotTraitArchitecture(pop=foundingPop, method="MethodB", fitFunc=twoTraitFitFunc)
 ```
 
 Out of alleles left in the population, how many of them would increase fitness?
@@ -578,16 +597,7 @@ overlayWalkOnLandscape(fit_df, type="CONTOUR", calculateFitnessTwoTrait)
 ```
 
 
-TODO:
-
-Simualate mutations for a single individual to figure out P(allelic substitution is favorable) - should reflect Fisher/Kimura
-
-P(mutation gets fixed) - show that this matches Kimura
-
-Compare adaptive walks for DH/inbred population where there are new mutations VS
-population w/standing genetic variation
-
-Figure out how to do QTL mapping
+This block runs 100 monte carlo simulations of different subpopulations to determine the average effect size of alleles that are fixed
 ```{r}
 nBurnInGens <- 10
 
@@ -623,13 +633,13 @@ fig <- add_trace(
   line = list(width = 5)
 )
 
-nSegGens <- 50
+nSegGens <- 120
 subPop_df <- data.frame(gen=1:nSegGens,
                    fitness=numeric(nSegGens),
                    traitValA=numeric(nSegGens),
                    traitValB=numeric(nSegGens))
 
-nSims <- 100
+nSims <- 150
 # figure out how to do this dynamically
 eff_size_df <- data.frame(orderFixed=c(),
                           effectSize=c())
@@ -648,9 +658,21 @@ for (s in 1:nSims) {
     subPop_df$traitValB[gen] <- meanP(subPop)[2]
     prevPop <- subPop
     subPop <- selectCross(subPop, trait=twoTraitFitFunc, nInd=nInd(subPop)*0.9, nCrosses=nInd(subPop))
-    prevGeno <- pullSegSiteGeno(prevPop)
-    newGeno <- pullSegSiteGeno(subPop)
+    prevGeno <- pullQtlGeno(prevPop,1)
+    if (prevPop@nTraits > 1) {
+      for (t in 2:prevPop@nTraits) {
+        prevGeno <- cbind(prevGeno, pullQtlGeno(prevPop, trait=t))
+      }
+    }
+    newGeno <- pullQtlGeno(subPop,1)
+    if (subPop@nTraits > 1) {
+      for (t in 2:subPop@nTraits) {
+        newGeno <- cbind(newGeno, pullQtlGeno(subPop, trait=t))
+      }
+    }
+    #newGeno <- pullSegSiteGeno(subPop)
     cols <- colnames(newGeno)
+    nLoci <- length(cols)
     for (l in 1:nLoci) {
       id <- cols[l]
       strs = unlist(strsplit(id, "_"))
@@ -663,7 +685,7 @@ for (s in 1:nSims) {
                                   id,
                                   twoTraitFitFunc,
                                   prevPop,
-                                  "MethodA")
+                                  "MethodB")
         if (effSize > 0) {
           inc <- TRUE
           new_row <- data.frame(orderFixed=c(idx),
@@ -682,9 +704,9 @@ for (s in 1:nSims) {
     fig,
     subPop_df,
     name = s,
-    x = popA_df$traitValA,
-    y = popA_df$traitValB,
-    z = popA_df$fitness,
+    x = subPop_df$traitValA,
+    y = subPop_df$traitValB,
+    z = subPop_df$fitness,
     type = 'scatter3d',
     mode = 'lines',
     opacity = 1,
@@ -695,7 +717,8 @@ for (s in 1:nSims) {
 
 grouped_df <- eff_size_df %>% group_by(orderFixed) %>% summarize(meanEffectSize = mean(effectSize))
 ggplot(data=grouped_df, aes(x=orderFixed, y=meanEffectSize)) +
-  geom_bar(stat="identity")
+  geom_bar(stat="identity") +
+  geom_smooth(formula = y ~ a^x)
 
 
 p <- fig %>%
@@ -705,12 +728,14 @@ p <- fig %>%
                       yaxis = list(title = "Trait B"),
                       zaxis = list(title = "w"),
                       aspectmode='cube')) %>% hide_colorbar()
+p
 htmlwidgets::saveWidget(as_widget(p), "~/Downloads/20241209_100adaptivewalks.html")
 
 ```
+
+This block will simulate one base population, from which two sub-populations are selected, and undergo purifying selection independently.
 ```{r}
 nBurnInGens <- 10
-trackFixedAlleles <- TRUE
 
 fit_df <- data.frame(gen=1:nBurnInGens,
                    fitness=numeric(nBurnInGens),
@@ -728,7 +753,7 @@ for (gen in 1:nBurnInGens) {
 }
 
 # Create 2 sub populations
-nSegGens <- 50
+nSegGens <- 20
 popA_df <- data.frame(gen=1:nSegGens,
                    fitness=numeric(nSegGens),
                    traitValA=numeric(nSegGens),
@@ -740,8 +765,8 @@ popB_df <- data.frame(gen=1:nSegGens,
                    traitValB=numeric(nSegGens))
 
 # Figure out a better way to select randomly? or by traitA, traitB?
-popA <- selectInd(pop, use="rand", nInd=nInd(pop)*0.25)
-popB <- selectInd(pop, use="rand", nInd=nInd(pop)*0.25)
+popA <- selectInd(pop, use="rand", nInd=40)
+popB <- selectInd(pop, use="rand", nInd=40)
 
 for (gen in 1:nSegGens) {
   popA_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(popA)))
@@ -817,23 +842,64 @@ Create RILs
 Inspect genetic architecture + do QTL mapping
 Work in Progress
 ```{r}
-plotTraitArchitecture(popA, "MethodB", twoTraitFitFunc) #| plotTraitArchitecture(popB, "MethodB",twoTraitFitFunc))
+(plotTraitArchitecture(popA, "MethodB", twoTraitFitFunc) | plotTraitArchitecture(popB, "MethodB",twoTraitFitFunc))
 
 mean(twoTraitFitFunc(pheno(popA)))
 mean(twoTraitFitFunc(pheno(popB)))
 
 
-indA <- popA[1]
-pheno(indA)
-indB <- popB[1]
-pheno(indB)
+a <- runif(1,1,nInd(popA))
+b <- runif(1,1,nInd(popB))
+indA <- popA[a]
+indB <- popB[b]
+print(cisElite(indA, indB), trait=1)
+print(cisElite(indA, indB), trait=2)
 
-RIL_pop <- RandCross(indA, indB)
-nRILGens <- 8
-for (r in 1:nRILGens) {
-  # Create RIL
-}
+F1 <- makeCross2(indA,
+                 indB,
+                 crossPlan=matrix(c(1,1), nrow=1, ncol=2),
+                 nProgeny=16)
 
+fg <- pullQtlGeno(F1)
+F2 = self(F1)
+F3 = self(F2)
+F4 = self(F3)
+F5 = self(F4)
+F6 = self(F5, nProgeny = 16)
+
+pheno= data.frame(id = 1:F6@nInd,
+                   pheno=F6@pheno)
+geno = pullSnpGeno(F6)
+geno = data.frame(
+  snp = colnames(geno),
+  chr = rep(1:10, each = nSegSites),
+  pos = rep(1:nSegSites, 10),
+  t(geno - 1)
+)
+colnames(geno)[-c(1:3)] = 1:F6@nInd
+model = GWAS(pheno, geno, plot = T)
+
+qtl1 = as.vector(getQtlMap(trait = 1)$id)
+qtl2 = as.vector(getQtlMap(trait = 2)$id)
+par(mfrow = c(3, 1))
+manhattan(model, chr = "chr", bp = "pos", p = "pheno.Trait1", snp = "snp", highlight = qtl1,
+  main = "Marker + subpopulation factor", ylim = c(0,10))
 ```
-Figure out QTL Mapping
+
+TODO:
+
+Simualate mutations for a single individual to figure out P(allelic substitution is favorable) - should reflect FKO
+
+P(mutation gets fixed) - show that this matches Kimura
+
+Compare adaptive walks for DH/inbred population where there are new mutations VS
+population w/standing genetic variation
+
+Figure out how to do QTL mapping
+
+
+```{r}
+data(hyper)
+plot(hyper)
+```
 
