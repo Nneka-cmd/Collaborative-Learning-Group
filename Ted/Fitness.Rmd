@@ -23,6 +23,11 @@ popSize <- 500
 nChr <- 10
 nSegSites <- 100
 nGens <- 50
+
+setwd("~/Documents/CSU/R/Collaborative-Learning-Group/Ted")
+dir <- file.path(getwd(), "FitnessLandscapes")
+
+if (!dir.exists(dir)) dir.create(dir)
 ```
 
 Functions
@@ -596,7 +601,6 @@ for(gen in 1:nGens) {
 overlayWalkOnLandscape(fit_df, type="CONTOUR", calculateFitnessTwoTrait)
 ```
 
-
 This block runs 100 monte carlo simulations of different subpopulations to determine the average effect size of alleles that are fixed
 ```{r}
 nBurnInGens <- 10
@@ -831,10 +835,11 @@ p <- fig %>%
                       yaxis = list(title = "Trait B"),
                       zaxis = list(title = "w"),
                       aspectmode='cube')) %>% hide_colorbar()
-htmlwidgets::saveWidget(as_widget(p), "~/Downloads/20241212_2adaptivewalks.html")
+
+
+htmlwidgets::saveWidget(as_widget(p), paste0(format(Sys.time(), "%F"), "adaptivewalks.html"))
 p
 ```
-
 
 
 Pull out individuals from each population and cross them
