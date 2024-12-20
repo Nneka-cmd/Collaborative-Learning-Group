@@ -13,7 +13,8 @@ library(viridis)
 library(dplyr)
 library(qqman)
 library(rrBLUP)
-library(qtl)
+
+library(reshape2)
 rm(list = ls())
 ```
 
@@ -47,13 +48,6 @@ calculateFitnessTwoTrait <- function(x,y) {
 
 hetLocus <- function(locus) {
   return (length(unique(locus)) > 1)
-}
-
-# Will return true if the two individuals have the same haplotype underlying the specified trait
-cisElite <- function(indA, indB, trait=1) {
-  qtlA <- pullQtlGeno(indA, trait=trait)
-  qtlB <- pullQtlGeno(indB, trait=trait)
-  return (isTRUE(all.equal(qtlA[1,], qtlB[1,])))
 }
 ```
 
@@ -410,7 +404,7 @@ foundingPop <- newPop(founders, simParam = SP)
 Create 2 Trait Population
 ```{r}
 set.seed(123)
-popSize = 1000
+popSize = 500
 nSegSites = 100
 
 founders = runMacs(
@@ -422,15 +416,16 @@ SP <- SimParam$new(founders)
 #SP$addTraitA(mean=c(runif(1,-10,10),runif(1,-10,10)), var=c(1,1), nQtlPerChr=20)
 #SP$addTraitA(mean=c(1,1), var=c(0.1,0.1), nQtlPerChr=c(5,5), gamma = TRUE, shape = 1)
 
-SP$addTraitA(mean=1, var=0.2, nQtlPerChr=3, gamma = TRUE, shape = 1)
-SP$addTraitA(mean=1, var=0.2, nQtlPerChr=3, gamma = TRUE, shape = 1)
+SP$addTraitA(mean=55, var=20, nQtlPerChr=c(1,1,1,1,0,0,0,0,0,0), gamma = TRUE, shape = 1) # e.g. height
+SP$addTraitA(mean=150, var=50, nQtlPerChr=c(1,1,1,1,0,0,0,0,0,0), gamma = TRUE, shape = 1) # e.g. flowering time
+SP$addTraitA(mean=950, var=200, nQtlPerChr = 100, gamma = TRUE, shape = 1)
 
-SP$setVarE(h2=c(0.6, 0.6))
-SP$addSnpChip(nSnpPerChr=10)
+SP$setVarE(h2=c(0.6, 0.6, 0.3))
+#SP$addSnpChip(nSnpPerChr=10)
 foundingPop <- newPop(founders, simParam = SP)
 
 #plot3dPopulationFitness(foundingPop, calculateFitnessTwoTrait)
-plotTraitArchitecture(pop=foundingPop, method="MethodB", fitFunc=twoTraitFitFunc)
+#plotTraitArchitecture(pop=foundingPop, method="MethodB", fitFunc=twoTraitFitFunc())
 ```
 
 Out of alleles left in the population, how many of them would increase fitness?
@@ -757,7 +752,7 @@ for (gen in 1:nBurnInGens) {
 }
 
 # Create 2 sub populations
-nSegGens <- 20
+nSegGens <- 10
 popA_df <- data.frame(gen=1:nSegGens,
                    fitness=numeric(nSegGens),
                    traitValA=numeric(nSegGens),
@@ -778,7 +773,7 @@ for (gen in 1:nSegGens) {
   popA_df$traitValB[gen] <- meanP(popA)[2]
   popA <- selectCross(popA, trait=twoTraitFitFunc, nInd=nInd(popA)*0.8, nCrosses=nInd(popA))
   
-  popB_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(popB)))
+  popB_df$fitness[gen] <- mean(realisticFitFunc(pheno(popB)))
   popB_df$traitValA[gen] <- meanP(popB)[1]
   popB_df$traitValB[gen] <- meanP(popB)[2]
   popB <- selectCross(popB, trait=twoTraitFitFunc, nInd=nInd(popB)*0.8, nCrosses=nInd(popB))
@@ -836,9 +831,8 @@ p <- fig %>%
                       zaxis = list(title = "w"),
                       aspectmode='cube')) %>% hide_colorbar()
 
-
-htmlwidgets::saveWidget(as_widget(p), paste0(format(Sys.time(), "%F"), "adaptivewalks.html"))
 p
+#htmlwidgets::saveWidget(as_widget(p), paste0(format(Sys.time(), "%F"), "adaptivewalks.html"))
 ```
 
 
@@ -853,12 +847,6 @@ mean(twoTraitFitFunc(pheno(popA)))
 mean(twoTraitFitFunc(pheno(popB)))
 
 
-a <- runif(1,1,nInd(popA))
-b <- runif(1,1,nInd(popB))
-indA <- popA[a]
-indB <- popB[b]
-print(cisElite(indA, indB), trait=1)
-print(cisElite(indA, indB), trait=2)
 
 F1 <- makeCross2(indA,
                  indB,
