@@ -13,6 +13,7 @@ library(viridis)
 library(dplyr)
 library(qqman)
 library(rrBLUP)
+library(qtl)
 
 library(reshape2)
 rm(list = ls())
@@ -405,7 +406,8 @@ Create 2 Trait Population
 ```{r}
 set.seed(123)
 popSize = 500
-nSegSites = 100
+nSegSites = 1000
+nMarkers = 100
 
 founders = runMacs(
    nInd=popSize,
@@ -416,12 +418,12 @@ SP <- SimParam$new(founders)
 #SP$addTraitA(mean=c(runif(1,-10,10),runif(1,-10,10)), var=c(1,1), nQtlPerChr=20)
 #SP$addTraitA(mean=c(1,1), var=c(0.1,0.1), nQtlPerChr=c(5,5), gamma = TRUE, shape = 1)
 
-SP$addTraitA(mean=55, var=20, nQtlPerChr=c(1,1,1,1,0,0,0,0,0,0), gamma = TRUE, shape = 1) # e.g. height
-SP$addTraitA(mean=150, var=50, nQtlPerChr=c(1,1,1,1,0,0,0,0,0,0), gamma = TRUE, shape = 1) # e.g. flowering time
-SP$addTraitA(mean=950, var=200, nQtlPerChr = 100, gamma = TRUE, shape = 1)
+SP$addTraitA(mean=1, var=0.1, nQtlPerChr=3, gamma = TRUE, shape = 1) # e.g. height
+SP$addTraitA(mean=1, var=0.1, nQtlPerChr=3, gamma = TRUE, shape = 1) # e.g. flowering time
+#SP$addTraitA(mean=950, var=200, nQtlPerChr = 100, gamma = TRUE, shape = 1)
 
-SP$setVarE(h2=c(0.6, 0.6, 0.3))
-#SP$addSnpChip(nSnpPerChr=10)
+SP$setVarE(h2=c(0.6, 0.6))
+SP$addSnpChip(nSnpPerChr=nMarkers)
 foundingPop <- newPop(founders, simParam = SP)
 
 #plot3dPopulationFitness(foundingPop, calculateFitnessTwoTrait)
@@ -429,8 +431,13 @@ foundingPop <- newPop(founders, simParam = SP)
 ```
 
 Out of alleles left in the population, how many of them would increase fitness?
+TODO:
 Next: how does this change with size of allele? Look at editGenomeTopQtl()
 Next: how does size of 'fitness delta' change over generations?
+Simualate mutations for a single individual to figure out P(allelic substitution is favorable) - should reflect FKO
+P(mutation gets fixed) - show that this matches Kimura
+Compare adaptive walks for DH/inbred population where there are new mutations VS
+population w/standing genetic variation
 ```{r}
 nGens = 50
 pop <- foundingPop
@@ -773,7 +780,7 @@ for (gen in 1:nSegGens) {
   popA_df$traitValB[gen] <- meanP(popA)[2]
   popA <- selectCross(popA, trait=twoTraitFitFunc, nInd=nInd(popA)*0.8, nCrosses=nInd(popA))
   
-  popB_df$fitness[gen] <- mean(realisticFitFunc(pheno(popB)))
+  popB_df$fitness[gen] <- mean(twoTraitFitFunc(pheno(popB)))
   popB_df$traitValA[gen] <- meanP(popB)[1]
   popB_df$traitValB[gen] <- meanP(popB)[2]
   popB <- selectCross(popB, trait=twoTraitFitFunc, nInd=nInd(popB)*0.8, nCrosses=nInd(popB))
@@ -846,6 +853,8 @@ Work in Progress
 mean(twoTraitFitFunc(pheno(popA)))
 mean(twoTraitFitFunc(pheno(popB)))
 
+indA <- popA[1]
+indB <- popB[1]
 
 
 F1 <- makeCross2(indA,
@@ -854,21 +863,55 @@ F1 <- makeCross2(indA,
                  nProgeny=16)
 
 fg <- pullQtlGeno(F1)
-F2 = self(F1)
-F3 = self(F2)
-F4 = self(F3)
-F5 = self(F4)
-F6 = self(F5, nProgeny = 16)
+F2 = self(F1, nProgeny=16)
 
-pheno= data.frame(id = 1:F6@nInd,
-                   pheno=F6@pheno)
-geno = pullSnpGeno(F6)
+getCross <- function(F2) {
+  snpGeno = pullSnpGeno(F2)
+  pheno= data.frame(pheno=F2@pheno)
+  snps <- colnames(snpGeno)
+  geno <- list()
+  for (c in 1:nChr) {
+    start <- (c-1)*nMarkers + 1
+    end <- nMarkers*c
+    chr_snps <- snps[start:end]
+    chr_snps <- sapply(chr_snps, function(x) as.numeric(strsplit(x, split="_")[[1]][2]))
+    chr_geno <- snpGeno[,start:end]+1
+    chr <- as.character(c)  
+    geno[[chr]] <- list()
+    attributes(obj[[chr]])$class<-"A"
+    geno[[chr]]$"data" <- chr_geno
+    geno[[chr]]$"map" <- chr_snps
+  }
+  cross <- list(geno=geno,pheno=pheno)
+  class(cross) <- c("f2","cross")
+  return (cross)
+}
+
+cross <- getCross(F2)
+plot(cross)
+
+# QTL Mapping
+cross <- calc.genoprob(cross, step=1, error.prob=0.01)
+out.em <- scanone(cross)
+out.hk <- scanone(cross, method="hk")
+plot(out.hk)
+operm.hk <- scanone(cross, method="hk", n.perm=1000)
+summary(operm.hk, alpha=0.05)
+
+#TODO: multiple QTL mapping
+#TODO: figure out how to to separate mapping for different traits
+```
+
+NOT USED: GWAS
+```{r}
+
 geno = data.frame(
   snp = colnames(geno),
-  chr = rep(1:10, each = nSegSites),
-  pos = rep(1:nSegSites, 10),
+  chr = rep(1:10, each = nMarkers),
+  pos = rep(1:nMarkers, 10),
   t(geno - 1)
 )
+
 colnames(geno)[-c(1:3)] = 1:F6@nInd
 model = GWAS(pheno, geno, plot = T)
 
@@ -879,20 +922,4 @@ manhattan(model, chr = "chr", bp = "pos", p = "pheno.Trait1", snp = "snp", highl
   main = "Marker + subpopulation factor", ylim = c(0,10))
 ```
 
-TODO:
-
-Simualate mutations for a single individual to figure out P(allelic substitution is favorable) - should reflect FKO
-
-P(mutation gets fixed) - show that this matches Kimura
-
-Compare adaptive walks for DH/inbred population where there are new mutations VS
-population w/standing genetic variation
-
-Figure out how to do QTL mapping
-
-
-```{r}
-data(hyper)
-plot(hyper)
-```
 

@@ -107,8 +107,9 @@ popB_df <- data.frame(gen=1:nSegGens,
                    traitValB=numeric(nSegGens))
 
 # Figure out a better way to select randomly? or by traitA, traitB?
-popA <- selectInd(pop, use="rand", nInd=40)
-popB <- selectInd(pop, use="rand", nInd=40)
+subPopSize <- 40
+popA <- selectInd(pop, use="rand", nInd=subPopSize)
+popB <- selectInd(pop, use="rand", nInd=subPopSize)
 
 for (gen in 1:nSegGens) {
   popA_df$fitness[gen] <- mean(realisticFitFunc(pheno(popA)))
@@ -178,7 +179,7 @@ p
 ```
 
 ```{r}
-popSize <- 40
+nProgeny <- 10
 
 findCisElites <- function(cis=TRUE, a=1, b=1) {
   found = FALSE
@@ -209,10 +210,9 @@ findCisElites <- function(cis=TRUE, a=1, b=1) {
   return (c(a, b))
 }
 
-popSize
 findCisPair <- function(indA, popB, cis=TRUE) {
   found = FALSE
-  for (b in 1:popSize) {
+  for (b in 1:subPopSize) {
     if (cis) {
       if (cisElite(indA, popB[b], trait=1) && cisElite(indA, popB[b], trait=2)) {
         print(b)
@@ -232,15 +232,22 @@ findCisPair <- function(indA, popB, cis=TRUE) {
   }
 }
 
-df_pheno <- data.frame(id = c(1:popSize),
-                 cis = numeric(popSize),
-                 trans = numeric(popSize))
+df_pheno <- data.frame(id = c(1:subPopSize),
+                 cis = numeric(subPopSize),
+                 trans = numeric(subPopSize))
 
-df_gv <- data.frame(id = c(1:popSize),
-                 cis = numeric(popSize),
-                 trans = numeric(popSize))
+df_gv <- data.frame(id = c(1:subPopSize),
+                 cis = numeric(subPopSize),
+                 trans = numeric(subPopSize))
 
-for (a in 1:popSize) {
+df_cis <- data.frame(architecture = c(1:subPopSize),
+                 pheno = numeric(subPopSize),
+                 gv = numeric(subPopSize))
+df_trans <- data.frame(architecture = c(1:subPopSize),
+                 pheno = numeric(subPopSize),
+                 gv = numeric(subPopSize))
+
+for (a in 1:subPopSize) {
   cis_elites <- findCisPair(popA[a], popB, TRUE)
   trans_elites <- findCisPair(popA[a], popB, FALSE)
   if (is.null(cis_elites)) {
@@ -260,7 +267,27 @@ for (a in 1:popSize) {
   df_gv$cis[a] = meanG(cisF1)[3]
   df_pheno$trans[a] = meanP(transF1)[3]
   df_gv$trans[a] = meanG(transF1)[3]
+  
+  df_cis$pheno[a] = meanP(cisF1)[3]
+  df_cis$gv[a] = meanG(cisF1)[3]
+  df_cis$architecture[a] = "cis"
+  
+  df_trans$pheno[a] = meanP(transF1)[3]
+  df_trans$gv[a] = meanG(transF1)[3]
+  df_trans$architecture[a] = "trans"
 }
+
+df_merged <- rbind(df_cis, df_trans)
+df_merged <- df_merged[apply(df_merged!=0, 1, all),]
+scatter <- ggplot(df_merged, aes(x=gv, y=pheno)) +
+  geom_point(aes(color=architecture)) +
+  labs(x="Genetic Value", y="Phenotype") +
+  theme(aspect.ratio=1) +
+  scale_color_manual(name = "Architecture",
+                     values = c("cis" = "darkgoldenrod1",
+                                "trans" = "royalblue3"))
+
+scatter
 
 df_pheno <- melt(df_pheno, id='id')
 df_gv <- melt(df_gv, id='id')
