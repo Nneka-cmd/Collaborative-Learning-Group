@@ -17,7 +17,7 @@ library(tidyverse)
 ```
 
 ```{r}
-set.seed(7)
+set.seed(14)
 ```
 
 ***Simulate male sterile lines***
