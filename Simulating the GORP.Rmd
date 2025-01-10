@@ -1,0 +1,308 @@
+---
+title: "Simulating the GORP"
+author: "N.R Okereke"
+date: "2025-01-09"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+***Load Packages***
+```{r}
+library(AlphaSimR)
+library(tidyverse)
+```
+
+```{r}
+set.seed(7)
+```
+
+***Simulate male sterile lines***
+```{r}
+# Donor line
+ms_lines <- runMacs2(nInd = 3, nChr = 10, segSites = 1000, genLen = 2, inbred = TRUE)
+```
+
+***Simulate Diverse Founder Lines***
+```{r}
+# Diverse founder lines (35 founders for the NAM population)
+diverseFounders <- runMacs2(nInd = 35, nChr = 10, segSites = 1000, genLen = 2, inbred = TRUE)
+```
+
+***Simulate parameters for both donor and diverse lines***
+```{r}
+# SimParam for reference and diverse founders
+SP <- SimParam$new(ms_lines)
+SP$addTraitA(nQtlPerChr = 5)
+SP$setSexes(sexes = "yes_rand")
+
+SP2 <-SimParam$new(diverseFounders)
+SP2$addTraitA(nQtlPerChr = 5)
+SP2$setSexes(sexes = "yes_rand")
+```
+
+***Create new populations***
+```{r}
+#create population
+pop <- newPop(ms_lines, simParam = SP)
+#optional step:if the random assignment is either male or female this can change it
+#pop@sex[3] <- "F" #Change the sex of the last individual to female
+
+pop2 <- newPop(diverseFounders, simParam = SP2)
+#pop2@sex[4:35] <- "M"
+```
+
+***Perform random crosses of ms_lines with founder lines***
+```{r}
+#set.seed(7)
+#F1 <- hybridCross(females = pop, males = pop2, crossPlan = "testcross")
+#F1 <- hybridCross(females = pop, males = pop2, crossPlan = crossplan, simParam = SP2)
+F1 <- randCross2(pop, pop2, 105, nProgeny = 2)
+```
+
+***increase recombination rate***
+```{r}
+# Adjust recombination ratio
+#SP$setRecombRatio(2)  
+```
+
+***Self F1 generation and generate 6 more generations by SSD***
+***This should represent first GORP CYCLE development***
+```{r}
+# Generate F2 population from each F1 population
+for (gen in 1:7) {
+  # Perform selfing for each generation of SSD
+  ssdPop <- self(F1, nProgeny = 2)  # one progeny per individual (single seed descent)
+  
+  # Optionally, track the progress of SSD (e.g., genetic diversity loss)
+  # print(paste("Generation", gen, "completed"))
+}
+```
+
+***Pull segregating sites and visualize ***
+```{r}
+genodata <- pullSegSiteGeno(F1)
+genodata2 <- pullSegSiteGeno(ssdPop)
+```
+
+***Visualize Data First Cycle***
+```{r}
+pca <- prcomp(genodata)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of Genotypes for Initial Cross",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+
+pca <- prcomp(genodata2)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of First GORP Cycle",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+```
+
+
+***Perform random crosses among first population***
+```{r}
+F1_2 <- randCross(ssdPop, nCrosses = 105, nProgeny = 2)
+```
+
+***Self F1 of the second GORP cycle initial cross and generate 6 more generations by SSD***
+***This should represent second GORP CYCLE development***
+```{r}
+# Generate F2 population from each F1 population
+for (gen in 1:7) {
+  # Perform selfing for each generation of SSD
+  ssdPop2 <- self(F1_2, nProgeny = 1)  # one progeny per individual (single seed descent)
+  
+  # Optionally, track the progress of SSD (e.g., genetic diversity loss)
+  # print(paste("Generation", gen, "completed"))
+}
+```
+
+
+***Pull segregating sites and visualize AGAIN***
+```{r}
+genodata3 <- pullSegSiteGeno(F1_2)
+genodata4 <- pullSegSiteGeno(ssdPop2)
+```
+
+***Visualize Data second Cycle***
+```{r}
+pca <- prcomp(genodata3)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of Genotypes for second Cross",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+
+pca <- prcomp(genodata4)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of Second GORP Cycle",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+```
+
+***Perform random crosses among second population***
+```{r}
+F1_3 <- randCross(ssdPop2, nCrosses = 210, nProgeny = 2)
+```
+
+***Self F1 of the second GORP cycle initial cross and generate 6 more generations by SSD***
+***This should represent third GORP CYCLE development***
+```{r}
+# Generate F2 population from each F1 population
+for (gen in 1:7) {
+  # Perform selfing for each generation of SSD
+  ssdPop3 <- self(F1_3, nProgeny = 1)  # one progeny per individual (single seed descent)
+}
+```
+
+
+***Pull segregating sites and visualize AGAIN x3***
+```{r}
+genodata5 <- pullSegSiteGeno(F1_3)
+genodata6 <- pullSegSiteGeno(ssdPop3)
+```
+
+***Visualize Data second Cycle***
+```{r}
+pca <- prcomp(genodata5)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of Genotypes for third Cross",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+
+pca <- prcomp(genodata6)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of Third GORP Cycle",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+```
+
+***Perform random crosses among third population***
+```{r}
+F1_4 <- randCross(ssdPop3, nCrosses = 420, nProgeny = 2)
+```
+
+***Self F1 of the second GORP cycle initial cross and generate 6 more generations by SSD***
+***This should represent third GORP CYCLE development***
+```{r}
+# Generate F2 population from each F1 population
+for (gen in 1:7) {
+  # Perform selfing for each generation of SSD
+  ssdPop4 <- self(F1_4, nProgeny = 1)  # one progeny per individual (single seed descent)
+}
+```
+
+
+***Pull segregating sites and visualize AGAIN x3***
+```{r}
+genodata7 <- pullSegSiteGeno(F1_4)
+genodata8 <- pullSegSiteGeno(ssdPop4)
+```
+
+***Visualize Data second Cycle***
+```{r}
+pca <- prcomp(genodata7)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of Genotypes for fourth Cross",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+
+pca <- prcomp(genodata8)
+
+pc1 <- pca$x[, 1]  # Principal Component 1
+pc2 <- pca$x[, 2]  # Principal Component 2
+
+# Step 6: Plot PCA of the SSD population (Base R)
+plot(
+  pc1, pc2,
+  xlab = "Principal Component 1",
+  ylab = "Principal Component 2",
+  main = "PCA of Fourth GORP Cycle",
+  col = "blue",      # Point color
+  pch = 16,          # Point shape
+  cex = 0.7          # Point size
+)
+grid()
+```
+
