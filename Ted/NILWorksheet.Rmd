@@ -10,24 +10,6 @@ library(ggplot2)
 library(patchwork)
 ```
 
-```{r}
-add <- function(a, b) {
-  return (a + b)
-}
-
-x <- 2
-y <- 3
-
-print(add(x, y))
-
-
-
-"word"
-3
-3.0
-
-```
-
 
 # Run this cell for the functions
 ```{r}

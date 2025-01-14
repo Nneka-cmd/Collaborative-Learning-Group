@@ -1,0 +1,96 @@
+---
+title: "Population"
+output: html_document
+date: "2024-12-19"
+---
+```{r}
+library(AlphaSimR)
+library(ggplot2)
+library(patchwork)
+library(plotly)
+library(viridis)
+rm(list = ls())
+```
+
+```{r}
+SAVE = FALSE
+if (SAVE) {
+  setwd("~/Documents/CSU/R/Collaborative-Learning-Group/Ted")
+  dir <- file.path(getwd(), "PopulationImprovement")
+  
+  if (!dir.exists(dir)) dir.create(dir)
+}
+
+```
+
+Plot a 3d surface of GEBV against 2 different input parameters
+Variables to play around with:
+- Selection intensity
+- Population size
+- Heritability
+- Starting genetic variance
+```{r}
+pop_vec <- c(50,100,200,500,800,1200,1600)
+prop_sel_vec <- seq(0.1,0.9, by=0.2)
+sel_int_vec <- vector(mode = 'list', length = length(prop_sel_vec))
+h2 <- 0.6
+nSims <- 3
+nGens <- 50
+nSegSites <- 100
+nQtlPerChr <- 20
+nChr <- 10
+gvar <- 10
+
+genMat <- matrix(NA, nrow=length(pop_vec),ncol=length(sel_int_vec))
+rownames(genMat) <- pop_vec
+colnames(genMat) <- sel_int_vec
+for (p in 1:length(pop_vec)) {
+  popSize = pop_vec[p]
+  print(paste0("Pop Size: ", popSize))
+  for (r in 1:length(prop_sel_vec)) {
+    prop <- prop_sel_vec[r]
+    selInt <- selInt(prop)
+    print(selInt)
+    sel_int_vec[[r]] <- selInt
+    
+    gain <- vector(length=nSims)
+    for (sim in c(1:nSims)) {
+      founders = quickHaplo(
+        nInd=popSize,
+        nChr=nChr,
+        segSites=nSegSites
+      )
+      SP <- SimParam$new(founders)
+    
+      SP$addTraitA(
+        mean = 0,
+        var = gvar,
+        nQtlPerChr = nQtlPerChr
+      )
+      SP$setVarE(h2=h2)
+      pop <- newPop(founders, simParam=SP)
+      
+      startGV <- meanG(pop)
+      for(gen in 1:nGens) {
+        pop <- selectCross(pop=pop, use='pheno', nInd=popSize*prop, nCrosses = popSize)
+      }
+      gain[sim] <- meanG(pop) - startGV
+    }
+    genMat[p, r] <- median(gain)
+  }
+}
+# Use this to plot a 3d surface
+# The input matrix z should have y rows and x columns
+fig <- plot_ly(x=sel_int_vec, y=pop_vec, z = genMat, type='surface') %>%
+  layout(scene = list(xaxis = list(title = "Selection Intensity"),
+                      yaxis = list(title = "Population Size"),
+                      zaxis = list(title = "Genetic Gain"),
+                      aspectmode='cube'))
+fig
+
+if (SAVE) {
+  htmlwidgets::saveWidget(as_widget(fig),
+                        file.path("PopulationImprovement",
+                                  paste0(format(Sys.time(), "%F_%H_%M_%S"), ".html")))
+}
+```

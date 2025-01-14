@@ -1,0 +1,308 @@
+---
+title: "CisTrans"
+output: html_document
+date: "2024-12-19"
+---
+
+```{r}
+library(AlphaSimR)
+library(ggplot2)
+library(patchwork)
+library(plotly)
+library(viridis)
+library(dplyr)
+library(qqman)
+library(rrBLUP)
+library(reshape2)
+
+rm(list = ls())
+```
+
+
+
+```{r}
+realisticFitFunc <- function(x, opt1=0, opt2=0) {
+  res = -((55-x[,1])^2) - ((150-x[,2])^2)
+  return (res)
+}
+
+calculateRealisticFitness <- function(x,y) {
+  return (-((55-x)^2)-((150-y)^2))
+}
+
+# Will return true if the two individuals have the same haplotype underlying the specified trait
+cisElite <- function(indA, indB, trait=1) {
+  qtlA <- pullQtlGeno(indA, trait=trait)
+  qtlB <- pullQtlGeno(indB, trait=trait)
+  return (isTRUE(all.equal(qtlA[1,], qtlB[1,])))
+}
+
+
+fitness_x = seq(35,75, by=0.25)
+fitness_y = seq(130,170, by=0.25)
+fitness_z = outer(fitness_x,fitness_y,calculateRealisticFitness)
+
+
+plot_ly(x=fitness_x,
+        y=fitness_y,
+        z=fitness_z,
+        type='surface',
+        colors = "PuBuGn",
+        opacity=1) %>%
+  layout(scene = list(xaxis = list(title = "Days to Flowering"),
+                      yaxis = list(title = "Plant Height"),
+                      zaxis = list(title = "Fitness"),
+                      aspectmode='cube'))
+```
+
+```{r}
+set.seed(123)
+popSize = 500
+nSegSites = 100
+
+founders = runMacs(
+   nInd=popSize,
+   nChr=nChr,
+   segSites=nSegSites
+)
+SP <- SimParam$new(founders)
+#SP$addTraitA(mean=c(runif(1,-10,10),runif(1,-10,10)), var=c(1,1), nQtlPerChr=20)
+#SP$addTraitA(mean=c(1,1), var=c(0.1,0.1), nQtlPerChr=c(5,5), gamma = TRUE, shape = 1)
+
+SP$addTraitA(mean=55, var=20, nQtlPerChr=c(1,1,1,1,0,0,0,0,0,0), gamma = TRUE, shape = 1) # e.g. height
+SP$addTraitA(mean=150, var=50, nQtlPerChr=c(1,1,1,1,0,0,0,0,0,0), gamma = TRUE, shape = 1) # e.g. flowering time
+SP$addTraitA(mean=950, var=200, nQtlPerChr = 100, gamma = TRUE, shape = 1)
+
+SP$setVarE(h2=c(0.6, 0.6, 0.3))
+#SP$addSnpChip(nSnpPerChr=10)
+foundingPop <- newPop(founders, simParam = SP)
+
+nBurnInGens <- 10
+
+fit_df <- data.frame(gen=1:nBurnInGens,
+                   fitness=numeric(nBurnInGens),
+                   traitValA=numeric(nBurnInGens),
+                   traitValB=numeric(nBurnInGens))
+
+pop <- foundingPop
+
+# BURN-IN
+for (gen in 1:nBurnInGens) {
+  fit_df$fitness[gen] <- mean(realisticFitFunc(pheno(pop)))
+  fit_df$traitValA[gen] <- meanP(pop)[1]
+  fit_df$traitValB[gen] <- meanP(pop)[2]
+  pop <- selectCross(pop, trait=realisticFitFunc, nInd=nInd(pop)*0.95, nCrosses=nInd(pop))
+}
+
+# Create 2 sub populations
+nSegGens <- 10
+popA_df <- data.frame(gen=1:nSegGens,
+                   fitness=numeric(nSegGens),
+                   traitValA=numeric(nSegGens),
+                   traitValB=numeric(nSegGens))
+
+popB_df <- data.frame(gen=1:nSegGens,
+                   fitness=numeric(nSegGens),
+                   traitValA=numeric(nSegGens),
+                   traitValB=numeric(nSegGens))
+
+# Figure out a better way to select randomly? or by traitA, traitB?
+subPopSize <- 40
+popA <- selectInd(pop, use="rand", nInd=subPopSize)
+popB <- selectInd(pop, use="rand", nInd=subPopSize)
+
+for (gen in 1:nSegGens) {
+  popA_df$fitness[gen] <- mean(realisticFitFunc(pheno(popA)))
+  popA_df$traitValA[gen] <- meanP(popA)[1]
+  popA_df$traitValB[gen] <- meanP(popA)[2]
+  popA <- selectCross(popA, trait=realisticFitFunc, nInd=nInd(popA)*0.8, nCrosses=nInd(popA))
+  
+  popB_df$fitness[gen] <- mean(realisticFitFunc(pheno(popB)))
+  popB_df$traitValA[gen] <- meanP(popB)[1]
+  popB_df$traitValB[gen] <- meanP(popB)[2]
+  popB <- selectCross(popB, trait=realisticFitFunc, nInd=nInd(popB)*0.8, nCrosses=nInd(popB))
+}
+
+fig <- plot_ly()
+fig <- add_trace(
+  fig,
+  fit_df,
+  name = "Burn In",
+  x = fit_df$traitValA,
+  y = fit_df$traitValB,
+  z = fit_df$fitness,
+  type = 'scatter3d',
+  mode = 'lines',
+  opacity = 1,
+  color = 'yellow',
+  line = list(width = 5)
+)
+
+fig <- add_trace(
+    fig,
+    popA_df,
+    name = "Pop A",
+    x = popA_df$traitValA,
+    y = popA_df$traitValB,
+    z = popA_df$fitness,
+    type = 'scatter3d',
+    mode = 'lines',
+    opacity = 1,
+    color = 'red',
+    line = list(width = 5)
+  )
+
+fig <- add_trace(
+    fig,
+    popB_df,
+    name = "Pop B",
+    x = popB_df$traitValA,
+    y = popB_df$traitValB,
+    z = popB_df$fitness,
+    type = 'scatter3d',
+    mode = 'lines',
+    opacity = 1,
+    color = 'blue',
+    line = list(width = 5)
+  )
+
+
+p <- fig %>%
+  layout(legend=list(title=list(text='Population')),
+         showlegend=FALSE,
+         scene = list(xaxis = list(title = "Trait A"),
+                      yaxis = list(title = "Trait B"),
+                      zaxis = list(title = "w"),
+                      aspectmode='cube')) %>% hide_colorbar()
+p
+
+```
+
+```{r}
+nProgeny <- 10
+
+findCisElites <- function(cis=TRUE, a=1, b=1) {
+  found = FALSE
+  repeat {
+    repeat {
+      if (cis) {
+        if (cisElite(popA[a], popB[b], trait=1) && cisElite(popA[a], popB[b], trait=2)) {
+          found = TRUE
+          break
+        }
+      }
+      if (!cis) {
+        if (!cisElite(popA[a], popB[b], trait=1) && !cisElite(popA[a], popB[b], trait=2)) {
+          found = TRUE
+          break
+        }
+      }
+      b <- b + 1
+      if (b > nInd(popB)) {
+        b <- 1
+        break
+      }
+    }
+    if (found) break
+    a <- a + 1
+    if (a > nInd(popA)) break
+  }
+  return (c(a, b))
+}
+
+findCisPair <- function(indA, popB, cis=TRUE) {
+  found = FALSE
+  for (b in 1:subPopSize) {
+    if (cis) {
+      if (cisElite(indA, popB[b], trait=1) && cisElite(indA, popB[b], trait=2)) {
+        print(b)
+        found = TRUE
+        break
+      }
+    }
+    if (!cis) {
+      if (!cisElite(indA, popB[b], trait=1) && !cisElite(indA, popB[b], trait=2)) {
+        found = TRUE
+        break
+      }
+    }
+  }
+  if (found) {
+    return (c(a,b))
+  }
+}
+
+df_pheno <- data.frame(id = c(1:subPopSize),
+                 cis = numeric(subPopSize),
+                 trans = numeric(subPopSize))
+
+df_gv <- data.frame(id = c(1:subPopSize),
+                 cis = numeric(subPopSize),
+                 trans = numeric(subPopSize))
+
+df_cis <- data.frame(architecture = c(1:subPopSize),
+                 pheno = numeric(subPopSize),
+                 gv = numeric(subPopSize))
+df_trans <- data.frame(architecture = c(1:subPopSize),
+                 pheno = numeric(subPopSize),
+                 gv = numeric(subPopSize))
+
+for (a in 1:subPopSize) {
+  cis_elites <- findCisPair(popA[a], popB, TRUE)
+  trans_elites <- findCisPair(popA[a], popB, FALSE)
+  if (is.null(cis_elites)) {
+    next
+  }
+  if (is.null(trans_elites)) {
+    next
+  }
+  
+  mergedCisPop <- c(popA[cis_elites[1]], popB[cis_elites[2]])
+  cisF1 <- randCross(mergedCisPop, nCrosses=1, nProgeny=nProgeny)
+  
+  mergedTransPop <- c(popA[trans_elites[1]], popB[trans_elites[2]])
+  transF1 <- randCross(mergedTransPop, nCrosses=1, nProgeny=nProgeny)
+  
+  df_pheno$cis[a] = meanP(cisF1)[3]
+  df_gv$cis[a] = meanG(cisF1)[3]
+  df_pheno$trans[a] = meanP(transF1)[3]
+  df_gv$trans[a] = meanG(transF1)[3]
+  
+  df_cis$pheno[a] = meanP(cisF1)[3]
+  df_cis$gv[a] = meanG(cisF1)[3]
+  df_cis$architecture[a] = "cis"
+  
+  df_trans$pheno[a] = meanP(transF1)[3]
+  df_trans$gv[a] = meanG(transF1)[3]
+  df_trans$architecture[a] = "trans"
+}
+
+df_merged <- rbind(df_cis, df_trans)
+df_merged <- df_merged[apply(df_merged!=0, 1, all),]
+scatter <- ggplot(df_merged, aes(x=gv, y=pheno)) +
+  geom_point(aes(color=architecture)) +
+  labs(x="Genetic Value", y="Phenotype") +
+  theme(aspect.ratio=1) +
+  scale_color_manual(name = "Architecture",
+                     values = c("cis" = "darkgoldenrod1",
+                                "trans" = "royalblue3"))
+
+scatter
+
+df_pheno <- melt(df_pheno, id='id')
+df_gv <- melt(df_gv, id='id')
+df_pheno <- df_pheno[apply(df_pheno!=0, 1, all),]
+colnames(df_pheno) <- c("id", "eliteness", "yield")
+df_gv <- df_gv[apply(df_gv!=0, 1, all),]
+colnames(df_gv) <- c("id", "eliteness", "yield")
+
+
+
+gv <- ggplot(df_gv, aes(x=eliteness, y=yield, fill=eliteness)) +
+  geom_violin() + labs(title="GEBV", ) + ylim(900,1000)
+p <- ggplot(df_pheno, aes(x=eliteness, y=yield, fill=eliteness)) +
+  geom_violin() + labs(title="Phenotype") + ylim(900,1000)
+(gv | p)
+```
+
+
