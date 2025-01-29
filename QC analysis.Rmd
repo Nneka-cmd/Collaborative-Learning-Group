@@ -1,0 +1,166 @@
+---
+title: "Filtering and QC for Seed companies"
+author: "N.R Okereke"
+date: "2025-01-24"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+***Load packages***
+
+```{r}
+library(dartR)
+library(ape)
+library(ade4)
+library(tidyverse)
+```
+
+***Import data into genlight format***
+```{r}
+#This imports SNP mapping data and individual classification
+gl <- gl.read.dart("../Report_DS24-10119_SNP_2.csv",
+                   ind.metafile = "../individual.csv")
+```
+
+***Identify absent markers***
+```{r}
+chromV  <- gl@other$loc.metrics$Chrom_Sorghum_bicolor_v5.1
+dropped <- gl$loc.names[grep("^Chr", as.character(chromV), invert = TRUE)]
+```
+
+***Filter out absent markers***
+
+```{r}
+Filter1 <- gl %>%
+  gl.drop.loc(dropped)# drop missing data ---
+```
+
+***Examine genlight using report functions to determine appropriate threshold ***
+```{r}
+#determine call rate for loci and individual
+gl.report.callrate(Filter1, method = "loc")
+gl.report.callrate(Filter1, method = "ind")
+#determine other parameter
+gl.report.maf(Filter1)
+gl.report.monomorphs(Filter1)
+gl.report.reproducibility(Filter1)
+gl.report.secondaries(Filter1)
+```
+
+***Filter using thresholds from reports***
+```{r}
+#filter genlight based on filtering criteria
+filtered_gl <- gl %>%
+  gl.filter.callrate(method = "loc", threshold = 0.672) %>%
+  gl.filter.callrate(method = "ind", threshold = 0.754) %>%
+  gl.filter.maf(threshold = 0.0074) %>%
+  gl.filter.secondaries(method = "best") %>%
+  gl.filter.reproducibility(threshold = 0.96) %>%
+  gl.filter.monomorphs() %>%
+  gl.recalc.metrics()
+```
+
+***Explore filtered data***
+```{r}
+#Explore the missingness
+gl.report.callrate(filtered_gl)
+```
+
+***Parse data into seed companies***
+```{r}
+Rosenow <- gl.drop.pop(filtered_gl, pop.list = c("Franklin", "Quinby"), recalc = TRUE, verbose = 3) %>%
+  gl.recalc.metrics()
+Quinby <- gl.drop.pop(filtered_gl, pop.list = c("Franklin", "Rosenow"), recalc = TRUE, verbose = 3) %>%
+  gl.recalc.metrics()
+Franklin <- gl.drop.pop(filtered_gl, pop.list = c("Rosenow", "Quinby"), recalc = TRUE, verbose = 3) %>%
+  gl.recalc.metrics()
+```
+
+***Neighbour joining analysis***
+```{r}
+#Export seed companies to fasta format
+gl2fasta(Rosenow, method = 1, outfile = "Rosenow.fasta",
+         outpath = getwd())
+gl2fasta(Franklin, method = 1, outfile = "Franklin.fasta",
+         outpath = getwd())
+gl2fasta(Quinby, method = 1, outfile = "Quinby.fasta",
+         outpath = getwd())
+rm(list = ls())
+
+```
+
+*Import fasta to r for phylogentic tree and plot out*
+```{r}
+Rosenow <- fasta2DNAbin(file = "Rosenow.fasta")
+D <- dist.dna(Rosenow,model = "K80")
+tre <- nj(D)
+#class(tre)
+tre <- ladderize(tre)
+#plot(tre, cex = .6)
+C <- hclust(D, method = "average", members = NULL)
+plot(C, cex = .6, main = "")
+title("Rosenow (filtered)")
+
+Franklin <- fasta2DNAbin(file = "Franklin.fasta")
+D <- dist.dna(Franklin,model = "K80")
+tre <- nj(D)
+#class(tre)
+tre <- ladderize(tre)
+#plot(tre, cex = .6)
+C <- hclust(D, method = "average", members = NULL)
+plot(C, cex = .6, main = "")
+title("Franklin (filtered)")
+
+Quinby <- fasta2DNAbin(file = "Quinby.fasta")
+D <- dist.dna(Quinby,model = "K80")
+tre <- nj(D)
+#class(tre)
+tre <- ladderize(tre)
+#plot(tre, cex = .6)
+C <- hclust(D, method = "average", members = NULL)
+plot(C, cex = .6, main = "")
+title("Quinby (filtered)")
+
+rm(list = ls()) #clear environment
+```
+
+***Skip filtration and conduct Neighbour Joining Analysis***
+```{r}
+#This imports SNP mapping data and individual classification
+gl <- gl.read.dart("../Report_DS24-10119_SNP_2.csv",
+                   ind.metafile = "../individual.csv")
+
+Rosenow <- fasta2DNAbin(file = "Rosenow2.fasta")
+D <- dist.dna(Rosenow,model = "K80")
+tre <- nj(D)
+#class(tre)
+tre <- ladderize(tre)
+#plot(tre, cex = .6)
+C <- hclust(D, method = "average", members = NULL)
+plot(C, cex = .6, main = "")
+title("Rosenow (unfiltered)")
+
+Franklin <- fasta2DNAbin(file = "Franklin2.fasta")
+D <- dist.dna(Franklin,model = "K80")
+tre <- nj(D)
+#class(tre)
+tre <- ladderize(tre)
+#plot(tre, cex = .6)
+C <- hclust(D, method = "average", members = NULL)
+plot(C, cex = .6, main = "")
+title("Franklin (unfiltered)")
+
+Quinby <- fasta2DNAbin(file = "Quinby2.fasta")
+D <- dist.dna(Quinby,model = "K80")
+tre <- nj(D)
+#class(tre)
+tre <- ladderize(tre)
+#plot(tre, cex = .6)
+C <- hclust(D, method = "average", members = NULL)
+plot(C, cex = .6, main = "")
+title("Quinby (unfiltered)")
+```
+
