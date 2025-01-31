@@ -22,8 +22,24 @@ library(tidyverse)
 ```{r}
 #This imports SNP mapping data and individual classification
 gl <- gl.read.dart("../Report_DS24-10119_SNP_2.csv",
-                   ind.metafile = "../individual.csv")
+                   ind.metafile = "../STRAIT.KIN Metadata File.csv")
 ```
+***Assign population and strata***
+```{r}
+pop(gl) <- gl@other$ind.metrics$Pop
+strata(gl) <- data.frame(gl@other$ind.metrics$Generation)
+nameStrata(gl) <- ~Generation
+```
+
+
+***Rename the sample names (individuals)***
+```{r}
+gl <- gl.recode.ind(gl, ind.recode = "../Rename_ALL.csv",
+                    mono.rm = FALSE,
+                    recalc = FALSE)
+```
+
+
 
 ***Identify absent markers***
 ```{r}
@@ -35,7 +51,8 @@ dropped <- gl$loc.names[grep("^Chr", as.character(chromV), invert = TRUE)]
 
 ```{r}
 Filter1 <- gl %>%
-  gl.drop.loc(dropped)# drop missing data ---
+  gl.drop.loc(dropped) %>%
+  gl.recalc.metrics()# drop missing data ---
 ```
 
 ***Examine genlight using report functions to determine appropriate threshold ***
@@ -69,13 +86,24 @@ filtered_gl <- gl %>%
 gl.report.callrate(filtered_gl)
 ```
 
+***Export to vcf and import back to R***
+```{r}
+gl2vcf(filtered_gl, outfile = "gl.vcf",
+       snp_pos = "ChromPosSnp_Sorghum_bicolor_v5.1",
+       snp_chr = "Chrom_Sorghum_bicolor_v5.1")
+```
+
+
+
+
+
 ***Parse data into seed companies***
 ```{r}
-Rosenow <- gl.drop.pop(filtered_gl, pop.list = c("Franklin", "Quinby"), recalc = TRUE, verbose = 3) %>%
+Rosenow <- gl.drop.pop(filtered_gl, pop.list = c("Karper", "Quinby"), recalc = TRUE, verbose = NULL) %>%
   gl.recalc.metrics()
-Quinby <- gl.drop.pop(filtered_gl, pop.list = c("Franklin", "Rosenow"), recalc = TRUE, verbose = 3) %>%
+Quinby <- gl.drop.pop(filtered_gl, pop.list = c("Rosenow", "Karper"), recalc = TRUE, verbose = NULL) %>%
   gl.recalc.metrics()
-Franklin <- gl.drop.pop(filtered_gl, pop.list = c("Rosenow", "Quinby"), recalc = TRUE, verbose = 3) %>%
+Karper <- gl.drop.pop(filtered_gl, pop.list = c("Rosenow", "Quinby"), recalc = TRUE, verbose = NULL) %>%
   gl.recalc.metrics()
 ```
 
@@ -129,9 +157,32 @@ rm(list = ls()) #clear environment
 
 ***Skip filtration and conduct Neighbour Joining Analysis***
 ```{r}
-#This imports SNP mapping data and individual classification
-gl <- gl.read.dart("../Report_DS24-10119_SNP_2.csv",
-                   ind.metafile = "../individual.csv")
+#less stringent filtering
+gl <- gl %>%
+  gl.filter.monomorphs() %>%
+  gl.recalc.metrics()
+
+#Parse data by population
+Rosenow2 <- gl.drop.pop(gl, pop.list = c("Karper", "Quinby"), recalc = TRUE) %>%
+  gl.recalc.metrics()
+Quinby2 <- gl.drop.pop(gl, pop.list = c("Rosenow", "Karper"), recalc = TRUE) %>%
+  gl.recalc.metrics()
+Karper2 <- gl.drop.pop(gl, pop.list = c("Rosenow", "Quinby"), recalc = TRUE)
+
+#Rename sample ids in Quinby
+#Quinby2 <- Quinby2 %>%
+#  gl.recode.ind(ind.recode = "../Quinby_rename.csv", recalc = TRUE)
+
+#Export genlight to a fasta format
+gl2fasta(Rosenow2, method = 1, outfile = "Rosenow2.fasta",
+         outpath = getwd())
+gl2fasta(Karper2, method = 1, outfile = "Karper2.fasta",
+         outpath = getwd())
+gl2fasta(Quinby2, method = 1, outfile = "Quinby2.fasta",
+         outpath = getwd())
+rm(list = ls())
+
+#jpeg(file = "my_plot.pdf", width = 18,height = 15)
 
 Rosenow <- fasta2DNAbin(file = "Rosenow2.fasta")
 D <- dist.dna(Rosenow,model = "K80")
@@ -143,8 +194,8 @@ C <- hclust(D, method = "average", members = NULL)
 plot(C, cex = .6, main = "")
 title("Rosenow (unfiltered)")
 
-Franklin <- fasta2DNAbin(file = "Franklin2.fasta")
-D <- dist.dna(Franklin,model = "K80")
+Karper <- fasta2DNAbin(file = "Karper2.fasta")
+D <- dist.dna(Karper,model = "K80")
 tre <- nj(D)
 #class(tre)
 tre <- ladderize(tre)
@@ -162,5 +213,36 @@ tre <- ladderize(tre)
 C <- hclust(D, method = "average", members = NULL)
 plot(C, cex = .6, main = "")
 title("Quinby (unfiltered)")
+
+
+```
+
+***PCA***
+```{r}
+pca <- gl.pcoa(filtered_gl) #generate the pca
+gl.pcoa.plot(pca, filtered_gl) #plot pca
+```
+
+```{r}
+rose_pca <- gl.pcoa(Rosenow)
+gl.pcoa.plot(rose_pca, Rosenow)
+```
+```{r}
+quin_pca <- gl.pcoa(Quinby)
+gl.pcoa.plot(quin_pca, Quinby)
+```
+
+
+
+```{r}
+karp_pca <- gl.pcoa(Franklin)
+gl.pcoa.plot(karp_pca, Franklin, ellipse = TRUE)
+```
+
+```{r}
+pop(filtered_gl) <- filtered_gl@other$ind.metrics$Generation
+gl_pca <- gl.pcoa(filtered_gl)
+gl.pcoa.plot(gl_pca, filtered_gl, ellipse = TRUE)
+
 ```
 
