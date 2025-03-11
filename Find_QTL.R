@@ -19,8 +19,8 @@ Rosenow <- gl.drop.pop(All_companies, pop.list = c('Quinby', 'Karper'),
                        mono.rm = TRUE, recalc = TRUE)
 
 #Rosenow SNP density
-rose_metrics <- as.data.frame(Rosenow@other$loc.metrics)
-rose_subset <- rose_metrics %>%
+snp_metrics <- as.data.frame(Rosenow@other$loc.metrics)
+snp_subset <- snp_metrics %>%
   select(c("Chrom_Sorghum_bicolor_v5.1", "ChromPosSnp_Sorghum_bicolor_v5.1",
            "Strand_Sorghum_bicolor_v5.1")) %>%
   rename(chrom = "Chrom_Sorghum_bicolor_v5.1",
@@ -28,6 +28,7 @@ rose_subset <- rose_metrics %>%
          strand = "Strand_Sorghum_bicolor_v5.1") %>%
   mutate(strand2 = case_when(strand ==  "Plus" ~ "+",
                              strand == "Minus" ~ "-"))
+
 # Define bin size (e.g., 1 Mb) Windows
 bin_size <- 1e6
 
